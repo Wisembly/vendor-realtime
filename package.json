@@ -1,0 +1,24 @@
+{
+    "scripts": {
+        "test": "node node_modules/karma/bin/karma start test/karma.config.js",
+        "build": "node node_modules/gulp/bin/gulp.js"
+    },
+    "dependencies": {},
+    "devDependencies": {
+        "karma": "*",
+        "karma-mocha": "*",
+        "karma-sinon-expect": "*",
+        "karma-chrome-launcher": "*",
+        "karma-firefox-launcher": "*",
+        "karma-safari-launcher": "*",
+        "karma-opera-launcher": "*",
+        "karma-ie-launcher": "*",
+        "karma-phantomjs-launcher": "*",
+        "gulp": "*",
+        "gulp-uglify": "*",
+        "gulp-rename": "*"
+    },
+    "spm": {
+        "main": "src/realTime.js"
+    }
+}
