@@ -4,14 +4,17 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.1.0';
+  window.WisemblyRealTime.version = '0.1.1';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
       this.mode = null;
 
-      this.states = {};
       this.state = 'offline';
+      this.states = {
+        push: 'offline',
+        polling: 'offline'
+      };
 
       this.__bindings = {};
 
@@ -26,10 +29,12 @@
         apiHost: null,
         apiNamespace: 'api/4/',
         apiToken: null,
+        client: 'https://cdn.socket.io/socket.io-1.2.1.js',
         server: null,
+        reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
+        reconnectionDelayMax: 60000,
         pullInterval: 10000,
         pullIntervalEnhance: 60000,
         forceNew: true
@@ -42,62 +47,89 @@
       this.options = $.extend({}, this.options, options);
     },
 
-    connect: function (io) {
-      // console.log('[realTime]', 'connect', !!io, this.options);
-      this.io = io || this.io;
+    getIOClient: function () {
+      var self = this,
+        dfd = $.Deferred();
 
-      switch (this.getState()) {
-        case 'push:connected':
+      if (window.io || this.io) {
+        dfd.resolve(window.io || this.io);
+      } else {
+        if (typeof require === 'function' && typeof define === 'function' && typeof define.amd === 'object') {
+          require([this.options.client], dfd.resolve, dfd.reject);
+        } else {
+          $.ajax({ url: this.options.client, dataType: 'script', timeout: 5000 })
+            .always(function () {
+              dfd[window.io ? 'resolve' : 'reject'](window.io);
+            });
+        }
+      }
+      return dfd.promise().done(function (io) {
+        // console.log('[realTime]', 'getIOClient', !!io);
+        self.io = io;
+      });
+    },
+
+    connect: function () {
+      // console.log('[realTime]', 'connect', this.options);
+
+      switch (this.states['push']) {
+        case 'connected':
           return $.Deferred().resolve().promise();
-        case 'push:connecting':
+        case 'connecting':
           return this.getPromise('push:connecting').promise();
       }
 
       var self = this,
-        dfd = $.Deferred(),
-        mode = this.io && this.options.server ? 'push' : 'polling';
+        dfd = $.Deferred();
 
-      switch (mode) {
-        case 'push':
-          this.setState('push', 'connecting');
-          this.storePromise('push:connecting', dfd);
-          this.socket = this.io(this.options.server, this.options);
-          this.bindSocketEvents();
-          break;
-        case 'polling':
-          this.setState('polling', 'connecting');
-          this.storePromise('polling:connecting', dfd);
-          break;
-      }
-
-      this.join(this.offlineContext);
-      this.offlineContext = null;
+      this.getIOClient()
+        .done(function (io) {
+          self.setState('push', 'connecting');
+          self.storePromise('push:connecting', dfd);
+          self.socket = io(self.options.server, self.options);
+          self.bindSocketEvents();
+        })
+        .fail(function () {
+          self.setState('polling', 'connecting');
+          self.storePromise('polling:connecting', dfd);
+        })
+        .always(function () {
+          self.join(self.offlineContext);
+          self.offlineContext = null;
+        });
 
       return dfd.promise();
     },
 
     disconnect: function() {
+      // console.log('[realTime] disconnect');
+
+      if (this.getState() === 'offline')
+        return $.Deferred().resolve().promise();
+
+      if (this.states['push'] === 'disconnecting')
+        return this.getPromise('push:disconnecting').promise();
+
       var self = this,
         dfd = $.Deferred();
 
-      if (this.getState() === 'offline')
-        return this.getPromise('push:disconnecting').promise();
-
+      // disconnect socket
       if (this.socket) {
+        this.setState('push', 'disconnecting');
         this.storePromise('push:disconnecting', dfd);
         this.socket.disconnect();
       } else {
         dfd.resolve();
       }
 
-      clearTimeout(this.pullTimer);
-      this.pullTimer = null;
+      // stop polling
+      this.stopPolling();
 
-      this.setStates({});
       this.offlineContext = null;
 
       return dfd.promise()
         .always(function () {
+          self.setStates({ push: 'offline', polling: 'offline' });
           self.socket = null;
           self.rooms = [];
           self.analytics = [];
@@ -109,6 +141,54 @@
      * Rooms
      */
 
+    joinFromPush: function (params) {
+      // console.log('[realTime] joinFromPush', params);
+      var self = this,
+        dfd = $.Deferred();
+
+      if (!this.socket) {
+        dfd.reject();
+      } else {
+        this.socket.emit('join', $.extend({ token: this.options.apiToken }, params), function (error, rooms) {
+          if (error) {
+            console.log('[realTime] Unable to join rooms on the Wisembly websocket server', error, params);
+            self.setState('polling', 'full');
+            dfd.reject();
+          } else {
+            console.log('[realTime] Successfully joined %d rooms on the Wisembly websocket server', rooms.length, rooms);
+            self.setState('polling', 'medium');
+            self.rooms = rooms;
+            dfd.resolve(self.rooms);
+          }
+        });
+      }
+      return dfd.promise();
+    },
+
+    joinFromAPI: function (params) {
+      // console.log('[realTime] joinFromAPI', params);
+      var self = this,
+        dfd = $.Deferred();
+
+      this.fetchRooms({ data: JSON.stringify(params) })
+        .done(function (data, status, jqXHR) {
+          data = data.success || data;
+          data = data.data || data;
+          $.each(data.rooms, function (index, room) {
+            if ($.inArray(room, self.rooms) === -1)
+              self.rooms.push(room);
+          });
+          self.setState('polling', 'full');
+          self.resolvePromise('polling:connecting');
+          self.lastPullTime = self.lastPullTime || +(new Date(jqXHR.getResponseHeader('Date')));
+
+          console.log('[realTime] Successfully retrieved %d rooms from Wisembly API', self.rooms.length, self.rooms);
+          dfd.resolve(self.rooms);
+        })
+        .fail(dfd.reject);
+      return dfd.promise();
+    },
+
     join: function (params) {
       // console.log('[realTime] join', params);
       var self = this,
@@ -116,47 +196,24 @@
 
       switch (this.getState()) {
         case 'push:connected':
-          // console.log('[realTime] Trying to join rooms through Wisembly websocket server');
-          this.socket.emit('join', $.extend({ token: this.options.apiToken }, params), function (error, rooms) {
-            if (error) {
-              // console.log('[realTime] Unable to join rooms on the Wisembly websocket server', error, params);
-              self.setStates({
-                push: 'offline',
-                polling: 'full'
-              });
-              self.join(params).done(dfd.resolve).fail(dfd.reject);
-            } else {
-              console.log('[realTime] Successfully joined %d rooms on the Wisembly websocket server', rooms.length, rooms);
-              self.rooms = rooms;
-              dfd.resolve(self.rooms);
-            }
-          });
+          this.joinFromPush(params)
+            .fail(function () {
+              self.joinFromAPI(params)
+                .done(dfd.resolve)
+                .fail(dfd.reject)
+                .always(function () {
+                  self.startRejoin(0);
+                });
+            });
           break;
         case 'push:connecting':
-          // console.log('[realTime] Trying to join rooms while not connected yet.... waiting');
           this.getPromise('push:connecting').done(function () {
             self.join(params).done(dfd.resolve).fail(dfd.reject);
           });
           break;
         case 'polling:connecting':
         case 'polling:full':
-          // console.log('[realTime] Trying to retrieve rooms through Wisembly API');
-          this.fetchRooms({ data: JSON.stringify(params) })
-            .done(function (data, status, jqXHR) {
-              data = data.success || data;
-              data = data.data || data;
-              $.each(data.rooms, function (index, room) {
-                if ($.inArray(room, self.rooms) === -1)
-                  self.rooms.push(room);
-              });
-              self.setState('polling', 'full');
-              self.resolvePromise('polling:connecting');
-              self.lastPullTime = self.lastPullTime || +(new Date(jqXHR.getResponseHeader('Date'))) || undefined;
-
-              console.log('[realTime] Successfully retrieved %d rooms from Wisembly API', self.rooms.length, self.rooms);
-              dfd.resolve(self.rooms);
-            })
-            .fail(dfd.reject);
+          this.joinFromAPI(params).done(dfd.resolve).fail(dfd.reject);
           break;
         default:
           this.offlineContext = $.extend({}, this.offlineContext, params);
@@ -169,6 +226,34 @@
     leave: function (rooms) {
       // TODO
       return $.Deferred().reject().promise();
+    },
+
+    startRejoin: function (timeout) {
+      // console.log('[realTime] startRejoin', this.states['push'], timeout, this.rooms);
+      if (this.states['push'] !== 'connected')
+        return;
+
+      var self = this;
+      timeout = timeout || 0;
+      timeout = Math.min(timeout, this.options.reconnectionDelayMax);
+
+      clearTimeout(this.rejoinTimer);
+      this.rejoinTimer = setTimeout(function () {
+        var promise = self.rooms.length ? self.joinFromPush({ rooms: self.rooms }) : $.Deferred().resolve().promise();
+        promise
+          .done(function () {
+            self.addAnalytics(self.analytics);
+          })
+          .fail(function () {
+            self.startRejoin(timeout + self.options.reconnectionDelay);
+          });
+      }, timeout);
+    },
+
+    stopRejoin: function () {
+      clearTimeout(this.rejoinTimer);
+      this.rejoinTimer = null;
+      this.rejoinTimeout = 0;
     },
 
     /*
@@ -291,11 +376,16 @@
 
       clearTimeout(this.pullTimer);
       this.pullTimer = setTimeout(function () {
-        self.pull()
-          .always(function () {
-            self.startPolling();
-          });
+        self.pull().always(function () {
+          self.startPolling();
+        });
       }, timeout);
+    },
+
+    stopPolling: function () {
+      clearTimeout(this.pullTimer);
+      this.pullTimer = null;
+      this.setState('polling', 'offline');
     },
 
     pull: function() {
@@ -355,7 +445,7 @@
       });
 
       this.socket.on('connect_error', function () {
-        // console.log('[realTime] Cannot connect to websocket server');
+        console.log('[realTime] Cannot connect to websocket server');
         self.onConnectError.apply(self, arguments);
       });
 
@@ -365,12 +455,12 @@
       });
 
       this.socket.on('reconnecting', function () {
-        // console.log('[realTime] Reconnecting to the Wisembly websocket server');
+        console.log('[realTime] Reconnecting to the Wisembly websocket server');
         self.onReconnecting.apply(self, arguments);
       });
 
       this.socket.on('reconnect', function () {
-        // console.log('[realTime] Reconnected to the Wisembly websocket server');
+        console.log('[realTime] Reconnected to the Wisembly websocket server');
         self.onReconnect.apply(self, arguments);
       });
 
@@ -387,10 +477,7 @@
     },
 
     onConnect: function () {
-      this.setStates({
-        push: 'connected',
-        polling: 'medium'
-      });
+      this.setStates({ push: 'connected', polling: 'medium' });
       this.resolvePromise('push:connecting');
     },
 
@@ -403,10 +490,7 @@
       var self = this;
       this.resolvePromise('push:disconnecting')
         .fail(function () {
-          self.setStates({
-            push: 'offline',
-            polling: 'full'
-          });
+          self.setStates({ push: 'offline', polling: 'full' });
         });
     },
 
@@ -501,6 +585,9 @@
 
       // retrieve current state
       var state = this.getState();
+      // console.log('[realTime] setStates', states, state);
+
+      // on current state changed
       if (this.state !== state) {
         // store current state
         this.state = state;
@@ -508,21 +595,19 @@
         this.trigger('state:update', { state: state });
       }
 
-      // update polling intervall
+      // on polling state changed
       if (previousStates['polling'] !== this.states['polling']) {
         this.startPolling();
       }
 
-      // join rooms
-      if (this.states['push'] === 'connected' && previousStates['push'] !== this.states['push']) {
-        if (this.rooms.length)
-          this.join({ rooms: this.rooms });
-        if (this.analytics.length)
-          this.addAnalytics(this.analytics);
+      // on push state changed
+      if (previousStates['push'] !== this.states['push']) {
+        this.startRejoin(0);
       }
     },
 
     setState: function (mode, state) {
+      // console.log('[realTime] setState', mode, state);
       var states = {
         push: this.states['push'],
         polling: this.states['polling']
@@ -576,5 +661,6 @@
       }
     }
   };
+
 
 })(jQuery);
