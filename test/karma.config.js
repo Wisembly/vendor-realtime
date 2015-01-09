@@ -5,7 +5,7 @@ module.exports = function(config) {
     frameworks: ['mocha', 'sinon-expect'],
 
     files: [
-        'test/jquery-1.11.2.min.js',
+        'bower_components/jquery/dist/jquery.min.js',
         'src/realTime.js',
         'test/test.js',
     ],
