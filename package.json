@@ -19,6 +19,6 @@
         "gulp-rename": "*"
     },
     "spm": {
-        "main": "src/realTime.js"
+        "main": "src/realtime.js"
     }
 }

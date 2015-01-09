@@ -6,7 +6,7 @@ module.exports = function(config) {
 
     files: [
         'bower_components/jquery/dist/jquery.min.js',
-        'src/realTime.js',
+        'src/realtime.js',
         'test/test.js',
     ],
 

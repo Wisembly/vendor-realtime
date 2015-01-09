@@ -7,9 +7,9 @@ gulp.task('default', function () {
 });
 
 gulp.task('scripts', function () {
-    return gulp.src('src/realTime.js')
-        .pipe(gulp.dest('build'))
+    return gulp.src('src/realtime.js')
+        .pipe(gulp.dest('dist'))
         .pipe(rename({ suffix: '.min' }))
         .pipe(uglify())
-        .pipe(gulp.dest('build'));
+        .pipe(gulp.dest('dist'));
 });

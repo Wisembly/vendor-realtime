@@ -1,7 +1,6 @@
 {
   "name": "wisembly-vendor-realtime",
-  "version": "0.1.2",
-  "main": "./dist/realtime.js",
+  "version": "0.1.3",
   "moduleType": [
     "globals"
   ],
