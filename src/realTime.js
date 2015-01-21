@@ -4,7 +4,7 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.1.4';
+  window.WisemblyRealTime.version = '0.1.5';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -202,7 +202,7 @@
                 .done(dfd.resolve)
                 .fail(dfd.reject)
                 .always(function () {
-                  self.startRejoin(0);
+                  self.startPushRejoin(0);
                 });
             });
           break;
@@ -228,18 +228,10 @@
       return $.Deferred().reject().promise();
     },
 
-    startRejoin: function (intervall) {
+    startPushRejoin: function (intervall) {
       // console.log('[realtime] startRejoin', this.states['push']);
       var self = this;
-
-      function fnRejoinIntervall(intervall) {
-        if (self.states['push'] !== 'connected')
-          return;
-
-        intervall = Math.min(intervall, self.options.reconnectionDelayMax);
-
-        clearTimeout(self.rejoinTimer);
-        self.rejoinTimer = setTimeout(function () {
+      function fnRejoinRequest(intervall) {
         var promise = self.rooms.length ? self.joinFromPush({ rooms: self.rooms }) : $.Deferred().resolve().promise();
         promise
           .done(function () {
@@ -248,14 +240,24 @@
           .fail(function () {
             fnRejoinIntervall(intervall + self.options.reconnectionDelay);
           });
+        return promise;
+      }
+
+      function fnRejoinIntervall(intervall) {
+        if (self.states['push'] !== 'connected')
+          return;
+        intervall = Math.min(intervall || 0, self.options.reconnectionDelayMax);
+        self.pushRejoinTimer = setTimeout(function () {
+          fnRejoinRequest(intervall);
         }, intervall);
       }
 
-      fnRejoinIntervall(intervall || 0)
+      clearTimeout(self.pushRejoinTimer);
+      fnRejoinIntervall(intervall);
     },
 
-    stopRejoin: function () {
-      clearTimeout(this.rejoinTimer);
+    stopPushRejoin: function () {
+      clearTimeout(this.pushRejoinTimer);
       this.rejoinTimer = null;
       this.rejoinTimeout = 0;
     },
@@ -366,26 +368,23 @@
       // console.log('[realtime] startPolling', this.states['polling']);
       var self = this;
 
-      function fnPullIntervall(intervall) {
-        clearTimeout(self.pullTimer);
-        self.pullTimer = setTimeout(function () {
-          self.pull().always(function () {
-            fnPullIntervall(intervall);
-          });
-        }, intervall);
+      function fnPullRequest() {
+        return self.pull().always(fnPullIntervall);
       }
 
-      switch (this.states['polling']) {
-        case 'full':
-          clearTimeout(this.pullTimer);
-          this.pull().always(function () {
-            fnPullIntervall(self.options.pullInterval);
-          });;
-          break;
-        case 'medium':
-          fnPullIntervall(this.options.pullIntervalEnhance);
-          break;
+      function fnPullIntervall() {
+        switch (self.states['polling']) {
+          case 'full':
+            self.pullTimer = setTimeout(fnPullRequest, self.options.pullInterval);
+            break;
+          case 'medium':
+            self.pullTimer = setTimeout(fnPullRequest, self.options.pullIntervalEnhance);
+            break;
+        }
       }
+
+      clearTimeout(self.pullTimer);
+      fnPullRequest();
     },
 
     stopPolling: function () {
@@ -602,7 +601,7 @@
 
       // on push state changed
       if (previousStates['push'] !== this.states['push']) {
-        this.startRejoin(0);
+        this.startPushRejoin(0);
       }
     },
 
