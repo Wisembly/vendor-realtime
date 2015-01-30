@@ -4,7 +4,7 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.1.6';
+  window.WisemblyRealTime.version = '0.1.7';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -149,7 +149,10 @@
       if (!this.socket) {
         dfd.reject();
       } else {
-        this.socket.emit('join', $.extend({ token: this.options.apiToken }, params), function (error, rooms) {
+        this.socket.emit('join', $.extend({ token: this.options.apiToken }, params), function (error, rooms, headers) {
+          headers = headers || {};
+          if ('date' in headers)
+            self.lastPullTime = self.lastPullTime || +(new Date(headers['date']));
           if (error) {
             console.log('[realtime] Unable to join rooms on the Wisembly websocket server', error, params);
             self.setState('polling', 'full');
@@ -178,9 +181,10 @@
             if ($.inArray(room, self.rooms) === -1)
               self.rooms.push(room);
           });
+          if (jqXHR.getResponseHeader('Date'))
+            self.lastPullTime = self.lastPullTime || +(new Date(jqXHR.getResponseHeader('Date')));
           self.setState('polling', 'full');
           self.resolvePromise('polling:connecting');
-          self.lastPullTime = self.lastPullTime || +(new Date(jqXHR.getResponseHeader('Date')));
 
           console.log('[realtime] Successfully retrieved %d rooms from Wisembly API', self.rooms.length, self.rooms);
           dfd.resolve(self.rooms);
@@ -660,6 +664,4 @@
       }
     }
   };
-
-
 })(jQuery);
