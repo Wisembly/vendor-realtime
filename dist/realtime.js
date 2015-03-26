@@ -4,7 +4,7 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.1.7';
+  window.WisemblyRealTime.version = '0.1.8';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -342,9 +342,9 @@
 
     addEntity: function (eventData) {
       var entity = eventData.data || {},
-        entityClassName = entity.class_name || '',
-        entityHash = entity.hash || '',
-        identifier = entityClassName + entityHash,
+        entityClassName = entity.class_name,
+        entityId = entity.id || entity.hash,
+        identifier = entityClassName && entityId ? entityClassName + ':' + entityId : null,
         time = eventData.time;
 
       if (identifier && time) {
@@ -354,13 +354,13 @@
 
     checkEntity: function(eventData) {
       var entity = eventData.data || {},
-        entityClassName = entity.class_name || '',
-        entityHash = entity.hash || '',
-        identifier = entityClassName + entityHash,
+        entityClassName = entity.class_name,
+        entityId = entity.id || entity.hash,
+        identifier = entityClassName && entityId ? entityClassName + ':' + entityId : null,
         time = eventData.time;
 
       // accept eventData if :
-      // not a valid entity (no hash and no class_name) OR not a valid eventData (no milliseconds) OR entity not registered yet OR last entity update done before this event
+      // not a valid entity (no id/hash and no class_name) OR not a valid eventData (no milliseconds) OR entity not registered yet OR last entity update done before this event
       return !identifier || !time || !this.entities.hasOwnProperty(identifier) || time >= this.entities[identifier];
     },
 
