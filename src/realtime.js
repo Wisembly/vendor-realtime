@@ -4,7 +4,7 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.1.8';
+  window.WisemblyRealTime.version = '0.1.9';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -37,7 +37,8 @@
         reconnectionDelayMax: 60000,
         pullInterval: 10000,
         pullIntervalEnhance: 60000,
-        forceNew: true
+        forceNew: true,
+        inactivityTimeout: 0
         //'secure': true
       };
       this.setOptions(options);
@@ -49,7 +50,7 @@
 
     getIOClient: function () {
       var self = this,
-        dfd = $.Deferred();
+          dfd = $.Deferred();
 
       if (window.io || this.io) {
         dfd.resolve(window.io || this.io);
@@ -71,7 +72,6 @@
 
     connect: function () {
       // console.log('[realtime]', 'connect', this.options);
-
       switch (this.states['push']) {
         case 'connected':
           return $.Deferred().resolve().promise();
@@ -80,7 +80,7 @@
       }
 
       var self = this,
-        dfd = $.Deferred();
+          dfd = $.Deferred();
 
       this.getIOClient()
         .done(function (io) {
@@ -98,12 +98,15 @@
           self.offlineContext = null;
         });
 
-      return dfd.promise();
+      return dfd.promise()
+        .done(function () {
+          self.trigger('connected', { states: this.states });
+          self.startActivityMonitor();
+        });
     },
 
-    disconnect: function() {
+    disconnect: function (data) {
       // console.log('[realtime] disconnect');
-
       if (this.getState() === 'offline')
         return $.Deferred().resolve().promise();
 
@@ -111,16 +114,18 @@
         return this.getPromise('push:disconnecting').promise();
 
       var self = this,
-        dfd = $.Deferred();
+          dfd = $.Deferred();
 
       // disconnect socket
-      if (this.socket) {
+      if (this.socket && this.socket.connected) {
         this.setState('push', 'disconnecting');
         this.storePromise('push:disconnecting', dfd);
         this.socket.disconnect();
       } else {
         dfd.resolve();
       }
+
+      this.stopPushRejoin();
 
       // stop polling
       this.stopPolling();
@@ -134,6 +139,7 @@
           self.rooms = [];
           self.analytics = [];
           self.promises = {};
+          self.trigger('disconnected', data);
         });
     },
 
@@ -144,7 +150,7 @@
     joinFromPush: function (params) {
       // console.log('[realtime] joinFromPush', params);
       var self = this,
-        dfd = $.Deferred();
+          dfd = $.Deferred();
 
       if (!this.socket) {
         dfd.reject();
@@ -161,6 +167,7 @@
             console.log('[realtime] Successfully joined %d rooms on the Wisembly websocket server', rooms.length, rooms);
             self.setState('polling', 'medium');
             self.rooms = rooms;
+            self.trigger('rooms:update', { rooms: self.rooms });
             dfd.resolve(self.rooms);
           }
         });
@@ -171,7 +178,7 @@
     joinFromAPI: function (params) {
       // console.log('[realtime] joinFromAPI', params);
       var self = this,
-        dfd = $.Deferred();
+          dfd = $.Deferred();
 
       this.fetchRooms({ data: JSON.stringify(params) })
         .done(function (data, status, jqXHR) {
@@ -187,6 +194,7 @@
           self.resolvePromise('polling:connecting');
 
           console.log('[realtime] Successfully retrieved %d rooms from Wisembly API', self.rooms.length, self.rooms);
+          self.trigger('rooms:update', { rooms: self.rooms });
           dfd.resolve(self.rooms);
         })
         .fail(dfd.reject);
@@ -196,11 +204,12 @@
     join: function (params) {
       // console.log('[realtime] join', params);
       var self = this,
-        dfd = $.Deferred();
+          dfd = $.Deferred();
 
       switch (this.getState()) {
         case 'push:connected':
           this.joinFromPush(params)
+            .done(dfd.resolve)
             .fail(function () {
               self.joinFromAPI(params)
                 .done(dfd.resolve)
@@ -232,40 +241,6 @@
       return $.Deferred().reject().promise();
     },
 
-    startPushRejoin: function (intervall) {
-      // console.log('[realtime] startRejoin', this.states['push']);
-      var self = this;
-      function fnRejoinRequest(intervall) {
-        var promise = self.rooms.length ? self.joinFromPush({ rooms: self.rooms }) : $.Deferred().resolve().promise();
-        promise
-          .done(function () {
-            self.addAnalytics(self.analytics);
-          })
-          .fail(function () {
-            fnRejoinIntervall(intervall + self.options.reconnectionDelay);
-          });
-        return promise;
-      }
-
-      function fnRejoinIntervall(intervall) {
-        if (self.states['push'] !== 'connected')
-          return;
-        intervall = Math.min(intervall || 0, self.options.reconnectionDelayMax);
-        self.pushRejoinTimer = setTimeout(function () {
-          fnRejoinRequest(intervall);
-        }, intervall);
-      }
-
-      clearTimeout(self.pushRejoinTimer);
-      fnRejoinIntervall(intervall);
-    },
-
-    stopPushRejoin: function () {
-      clearTimeout(this.pushRejoinTimer);
-      this.rejoinTimer = null;
-      this.rejoinTimeout = 0;
-    },
-
     /*
      * Analytics
      */
@@ -275,7 +250,7 @@
       namespaces = !namespaces || $.isArray(namespaces) ? namespaces : [ namespaces ];
 
       var self = this,
-        dfd = $.Deferred();
+          dfd = $.Deferred();
 
       switch (this.getState()) {
         case 'push:connected':
@@ -333,7 +308,23 @@
 
     sendEvent: function (eventData) {
       // console.log('[realtime] sendEvent:', eventData.eventName, eventData);
+      this.startActivityMonitor();
       this.trigger('event:received', eventData);
+    },
+
+    startActivityMonitor: function () {
+      if (!this.options.inactivityTimeout)
+        return;
+      var self = this;
+      clearTimeout(this.inactivityTimer);
+      this.inactivityTimer = setTimeout(function () {
+        self.disconnect({ reason: 'inactivity', timeout: self.options.inactivityTimeout });
+      }, this.options.inactivityTimeout);
+    },
+
+    stopActivityMonitor: function () {
+      clearTimeout(this.inactivityTimer);
+      this.inactivityTimer = null;
     },
 
     /*
@@ -342,10 +333,10 @@
 
     addEntity: function (eventData) {
       var entity = eventData.data || {},
-        entityClassName = entity.class_name,
-        entityId = entity.id || entity.hash,
-        identifier = entityClassName && entityId ? entityClassName + ':' + entityId : null,
-        time = eventData.time;
+          entityClassName = entity.class_name,
+          entityId = entity.id || entity.hash,
+          identifier = entityClassName && entityId ? entityClassName + ':' + entityId : null,
+          time = eventData.time;
 
       if (identifier && time) {
         this.entities[identifier] = time;
@@ -354,10 +345,10 @@
 
     checkEntity: function(eventData) {
       var entity = eventData.data || {},
-        entityClassName = entity.class_name,
-        entityId = entity.id || entity.hash,
-        identifier = entityClassName && entityId ? entityClassName + ':' + entityId : null,
-        time = eventData.time;
+          entityClassName = entity.class_name,
+          entityId = entity.id || entity.hash,
+          identifier = entityClassName && entityId ? entityClassName + ':' + entityId : null,
+          time = eventData.time;
 
       // accept eventData if :
       // not a valid entity (no id/hash and no class_name) OR not a valid eventData (no milliseconds) OR entity not registered yet OR last entity update done before this event
@@ -365,10 +356,51 @@
     },
 
     /*
+     * Push
+     */
+
+    startPushRejoin: function (intervall) {
+      if (this.states['push'] !== 'connected')
+        return;
+      // console.log('[realtime] startPushRejoin', this.states['push']);
+      var self = this;
+      function fnRejoinRequest(intervall) {
+        var promise = self.rooms.length ? self.joinFromPush({ rooms: self.rooms }) : $.Deferred().resolve().promise();
+        promise
+          .done(function () {
+            self.addAnalytics(self.analytics);
+          })
+          .fail(function () {
+            fnRejoinIntervall(intervall + self.options.reconnectionDelay);
+          });
+        return promise;
+      }
+
+      function fnRejoinIntervall(intervall) {
+        if (self.states['push'] !== 'connected')
+          return;
+        intervall = Math.min(intervall || 0, self.options.reconnectionDelayMax);
+        self.pushRejoinTimer = setTimeout(function () {
+          fnRejoinRequest(intervall);
+        }, intervall);
+      }
+
+      clearTimeout(this.pushRejoinTimer);
+      fnRejoinIntervall(intervall);
+    },
+
+    stopPushRejoin: function () {
+      clearTimeout(this.pushRejoinTimer);
+      this.pushRejoinTimer = null;
+    },
+
+    /*
      * Polling
      */
 
     startPolling: function () {
+      if (this.states['polling'] === 'offline')
+        return;
       // console.log('[realtime] startPolling', this.states['polling']);
       var self = this;
 
@@ -387,7 +419,7 @@
         }
       }
 
-      clearTimeout(self.pullTimer);
+      clearTimeout(this.pullTimer);
       fnPullRequest();
     },
 
@@ -520,36 +552,52 @@
     },
 
     fetchRooms: function (options) {
-      var url = this.buildURL('users/node/credentials?token=' + this.options.apiToken);
+      var self = this,
+          token = this.options.apiToken,
+          url = this.buildURL('users/node/credentials?token=' + token);
       if (!url)
         return $.Deferred().reject().promise();
       return $.ajax($.extend(true, {
-        url: url,
-        type: 'POST',
-        dataType: 'json',
-        contentType: 'application/json',
-        cache: false
-      }, options));
+          url: url,
+          type: 'POST',
+          dataType: 'json',
+          contentType: 'application/json',
+          cache: false
+        }, options))
+        .fail(function (jqXHR, textStatus, errorThrown) {
+          var data = {};
+          try { data = jqXHR ? $.parseJSON(jqXHR.responseText) : {} } catch (e) { }
+          if (data.error && data.error.code === 'wrong_token')
+            self.disconnect({ reason: 'wrong_token', token: token });
+        });
     },
 
     fetchPullEvents: function (options) {
-      var url = this.buildURL('pull');
-      // console.log('[realtime] fetchPullEvents', url, this.rooms);
-
+      var self = this,
+          url = this.buildURL('pull');
       if (!url || !this.rooms.length)
         return $.Deferred().reject().promise();
+      // console.log('[realtime] fetchPullEvents');
+      var token = this.options.apiToken;
       return $.ajax($.extend(true, {
-        url: url,
-        type: 'GET',
-        dataType: 'json',
-        contentType: 'application/json',
-        data: {
-          token: this.options.apiToken,
-          rooms: this.rooms,
-          since: this.lastPullTime
-        },
-        cache: false
-      }, options));
+          url: url,
+          type: 'GET',
+          dataType: 'json',
+          contentType: 'application/json',
+          data: {
+            token: token,
+            rooms: this.rooms,
+            since: this.lastPullTime,
+            enhanced: this.states['polling'] !== 'full'
+          },
+          cache: false
+        }, options))
+        .fail(function (jqXHR, textStatus, errorThrown) {
+          var data = {};
+          try { data = jqXHR ? $.parseJSON(jqXHR.responseText) : {} } catch (e) { }
+          if (data.error && data.error.code === 'wrong_token')
+            self.disconnect({ reason: 'wrong_token', token: token });
+        });
     },
 
     /*
@@ -566,7 +614,7 @@
 
     resolvePromise: function (name) {
       var self = this,
-        dfd = this.getPromise(name);
+          dfd = this.getPromise(name);
       if (dfd.state() === 'pending')
         dfd.resolve();
       return dfd.promise().always(function () {
@@ -588,12 +636,12 @@
 
       // retrieve current state
       var state = this.getState();
-      // console.log('[realtime] setStates', states, state);
 
       // on current state changed
       if (this.state !== state) {
         // store current state
         this.state = state;
+        // console.log('[realtime] setStates:', states, state);
         // trigger 'state:update'
         this.trigger('state:update', { state: state });
       }
