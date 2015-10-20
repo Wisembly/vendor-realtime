@@ -4,7 +4,7 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.1.9';
+  window.WisemblyRealTime.version = '0.1.10';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -364,6 +364,7 @@
         return;
       // console.log('[realtime] startPushRejoin', this.states['push']);
       var self = this;
+          nbAttemps = 0;
       function fnRejoinRequest(intervall) {
         var promise = self.rooms.length ? self.joinFromPush({ rooms: self.rooms }) : $.Deferred().resolve().promise();
         promise
@@ -371,7 +372,8 @@
             self.addAnalytics(self.analytics);
           })
           .fail(function () {
-            fnRejoinIntervall(intervall + self.options.reconnectionDelay);
+            if (++nbAttemps < self.options.reconnectionAttempts)
+              fnRejoinIntervall(intervall + self.options.reconnectionDelay);
           });
         return promise;
       }
