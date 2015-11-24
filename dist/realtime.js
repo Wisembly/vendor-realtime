@@ -4,7 +4,7 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.1.10';
+  window.WisemblyRealTime.version = '0.1.11';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -143,10 +143,18 @@
         });
     },
 
+    ping: function () {
+      var self = this;
+
+      this.socket.emit('ping', { timestamp: new Date().getTime() } , function (name, data) {
+        if ('pong' === name)
+          self.trigger('event:pong', data);
+      });
+    },
+
     /*
      * Rooms
      */
-
     joinFromPush: function (params) {
       // console.log('[realtime] joinFromPush', params);
       var self = this,
