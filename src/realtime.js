@@ -4,7 +4,7 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.1.11';
+  window.WisemblyRealTime.version = '0.1.12';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -144,12 +144,18 @@
     },
 
     ping: function () {
-      var self = this;
+      var self = this,
+          dfd = $.Deferred();
 
-      this.socket.emit('ping', { timestamp: new Date().getTime() } , function (name, data) {
-        if ('pong' === name)
+      this.socket.emit('ping', { timestamp: +(new Date()) } , function (name, data) {
+        if ('pong' !== name) {
+          dfd.reject();
+        } else {
           self.trigger('event:pong', data);
+          dfd.resolve(data);
+        }
       });
+      return dfd.promise();
     },
 
     /*
@@ -170,7 +176,7 @@
           if (error) {
             console.log('[realtime] Unable to join rooms on the Wisembly websocket server', error, params);
             self.setState('polling', 'full');
-            dfd.reject();
+            dfd.reject(error);
           } else {
             console.log('[realtime] Successfully joined %d rooms on the Wisembly websocket server', rooms.length, rooms);
             self.setState('polling', 'medium');
@@ -264,7 +270,7 @@
         case 'push:connected':
           this.socket.emit('analytics:subscribe', namespaces || [], function (error, namespaces) {
             if (error) {
-              dfd.reject();
+              dfd.reject(error);
             } else {
               console.log('[realtime] Successfully joined %d analytics rooms on the Wisembly websocket server', namespaces.length);
               self.analytics = namespaces;
