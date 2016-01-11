@@ -4,7 +4,7 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.1.13';
+  window.WisemblyRealTime.version = '0.2.1';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
