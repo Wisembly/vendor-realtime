@@ -579,7 +579,7 @@
           dataType: 'json',
           contentType: 'application/json',
           headers: {
-            'Wisembly-Token': token,
+            'Wisembly-Token': token
           },
           cache: false
       }, options);
