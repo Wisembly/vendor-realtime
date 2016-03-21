@@ -4,7 +4,7 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.2.1';
+  window.WisemblyRealTime.version = '0.2.2';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -569,6 +569,7 @@
 
     apiRequest: function (path, options) {
       var self = this,
+          token = this.options.apiToken,
           url = this.buildURL(path);
       if (!url)
         return $.Deferred().reject().promise();
@@ -577,33 +578,29 @@
           type: 'GET',
           dataType: 'json',
           contentType: 'application/json',
+          headers: {
+            'Wisembly-Token': token,
+          },
           cache: false
       }, options);
       return $.ajax(options)
         .fail(function (jqXHR, textStatus, errorThrown) {
-          var data = { request: $.extend({ path: path }, options) };
+          var data = { request: $.extend({ path: path, token: token }, options) };
           try { data = $.extend(data, jqXHR ? $.parseJSON(jqXHR.responseText) : {}); } catch (e) { }
           self.trigger('error', data);
         });
     },
 
     fetchRooms: function (options) {
-      var self = this,
-          token = this.options.apiToken;
-      return this.apiRequest('users/node/credentials?token=' + token, {
-        type: 'POST',
-        token: token
-      });
+      return this.apiRequest('users/node/credentials', $.extend({
+        type: 'POST'
+      }, options));
     },
 
     fetchPullEvents: function (options) {
-      var self = this,
-          token = this.options.apiToken;
       return this.apiRequest('pull', {
         type: 'GET',
-        token: token,
         data: {
-          token: token,
           rooms: this.rooms,
           since: this.lastPullTime,
           enhanced: this.states['polling'] !== 'full'
