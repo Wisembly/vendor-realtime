@@ -6,7 +6,7 @@
     this.init(options);
   };
 
-  exports.WisemblyRealTime.version = '0.2.2';
+  exports.WisemblyRealTime.version = '0.3.0';
 
   exports.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -40,9 +40,14 @@
         pullInterval: 10000,
         pullIntervalEnhance: 60000,
         forceNew: true,
-        inactivityTimeout: 0
-        //'secure': true
+        inactivityTimeout: 0,
+        //'secure': true,
+        onPushMissedReport: function () {}, // When the push server should be logged in, but an event is fetched through the API
+        onPushUp: function () {},           // When the push server goes up
+        onPushDown: function () {},         // When the push server goes down
+        onPullReport: function () {}        // When events are fetched through the API while the push server is being down
       };
+
       this.setOptions(options);
     },
 
@@ -465,17 +470,26 @@
           data = data.success || data;
           data = data.data || data;
 
-          var count = 0;
+          var count = 0, sum = 0;
           $.each(data.data || [], function(index, eventData) {
-            count += self.handleEvent($.extend({}, eventData, { via: 'polling' })) ? 1 : 0;
+            if (self.handleEvent($.extend({}, eventData, { via: 'polling' }))) {
+              sum += data.since - eventData.time;
+              count += 1;
+            }
           });
+
           switch (self.getState()) {
             case 'polling:full':
+              if (count) {
+                self.options.onPullReport(count);
+              }
               break;
             case 'push:connected':
             case 'push:connecting':
-              if (count)
+              if (count) {
                 console.warn('[realtime] missed_push_event:' + count + ': on ' + data.data.length + ' events');
+                  self.options.onPushMissedReport(count, sum / count);
+              }
               break;
           }
 
@@ -535,17 +549,19 @@
     },
 
     onSocketConnect: function () {
+      this.options.onPushUp();
       this.setStates({ push: 'connected', polling: 'medium' });
       this.resolvePromise('push:connecting');
     },
 
-    onSocketConnectError: function () {
-      this.onSocketDisconnect();
+    onSocketConnectError: function (error) {
+      this.onSocketDisconnect(error);
       this.resolvePromise('push:connecting');
     },
 
-    onSocketDisconnect: function () {
+    onSocketDisconnect: function (error) {
       var self = this;
+      this.options.onPushDown(error);
       this.resolvePromise('push:disconnecting')
         .fail(function () {
           self.setStates({ push: 'offline', polling: 'full' });
@@ -728,6 +744,7 @@
       }
     }
   };
+
 })((function () {
 
   if (typeof window !== 'undefined')
