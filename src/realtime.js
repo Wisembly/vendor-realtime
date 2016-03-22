@@ -6,7 +6,7 @@
     this.init(options);
   };
 
-  exports.WisemblyRealTime.version = '0.2.4';
+  exports.WisemblyRealTime.version = '0.3.0';
 
   exports.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -43,8 +43,13 @@
         forceNew: true,
         inactivityTimeout: 0,
         transports: ['websocket', 'polling']
-        //'secure': true
+        //'secure': true,
+        onPushMissedReport: function () {}, // When the push server should be logged in, but an event is fetched through the API
+        onPushUp: function () {},           // When the push server goes up
+        onPushDown: function () {},         // When the push server goes down
+        onPullReport: function () {}        // When events are fetched through the API while the push server is being down
       };
+
       this.setOptions(options);
     },
 
@@ -477,6 +482,7 @@
             if (self.handleEvent($.extend({}, eventData, { via: 'polling' })) && self.states['polling'] !== 'full')
                 self.trigger('missed', eventData);
           });
+
           self.lastPullTime = data.since > (self.lastPullTime || 0) ? data.since : self.lastPullTime;
         })
         .always(function () {
@@ -538,6 +544,7 @@
     },
 
     onSocketConnect: function () {
+      this.options.onPushUp();
       this.setStates({ push: 'connected', polling: 'medium' });
       this.resolvePromise('push:connecting');
     },
@@ -546,13 +553,14 @@
       this.uuid = data.uuid;
     },
 
-    onSocketConnectError: function () {
-      this.onSocketDisconnect();
+    onSocketConnectError: function (error) {
+      this.onSocketDisconnect(error);
       this.resolvePromise('push:connecting');
     },
 
-    onSocketDisconnect: function () {
+    onSocketDisconnect: function (error) {
       var self = this;
+      this.options.onPushDown(error);
       this.resolvePromise('push:disconnecting')
         .fail(function () {
           self.setStates({ push: 'offline', polling: 'full' });
@@ -737,6 +745,7 @@
       }
     }
   };
+
 })((function () {
 
   if (typeof window !== 'undefined')
