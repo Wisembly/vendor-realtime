@@ -39,11 +39,7 @@
         pullIntervalEnhance: 60000,
         forceNew: true,
         inactivityTimeout: 0,
-        //'secure': true,
-        onPushMissedReport: function () {}, // When the push server should be logged in, but an event is fetched through the API
-        onPushUp: function () {},           // When the push server goes up
-        onPushDown: function () {},         // When the push server goes down
-        onPullReport: function () {}        // When events are fetched through the API while the push server is being down
+        //'secure': true
       };
 
       this.setOptions(options);
@@ -473,14 +469,14 @@
           switch (self.getState()) {
             case 'polling:full':
               if (count) {
-                self.options.onPullReport(count);
+                self.trigger('pullReport', count);
               }
               break;
             case 'push:connected':
             case 'push:connecting':
               if (count) {
                 console.warn('[realtime] missed_push_event:' + count + ': on ' + data.data.length + ' events');
-                  self.options.onPushMissedReport(count, sum / count);
+                self.trigger('pushMissedReport', count, sum / count);
               }
               break;
           }
@@ -541,7 +537,7 @@
     },
 
     onSocketConnect: function () {
-      this.options.onPushUp();
+      this.trigger('pushUp');
       this.setStates({ push: 'connected', polling: 'medium' });
       this.resolvePromise('push:connecting');
     },
@@ -553,7 +549,7 @@
 
     onSocketDisconnect: function (error) {
       var self = this;
-      this.options.onPushDown(error);
+      this.trigger('pushDown');
       this.resolvePromise('push:disconnecting')
         .fail(function () {
           self.setStates({ push: 'offline', polling: 'full' });
