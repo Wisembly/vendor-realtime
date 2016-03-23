@@ -1,6 +1,7 @@
 {
     "name": "wisembly-vendor-realtime",
     "main": "src/realtime.js",
+    "version": "0.3.0",
     "scripts": {
         "test": "$(npm bin)/bower install && $(npm bin)/karma start test/karma.config.js",
         "build": "$(npm bin)/gulp"
