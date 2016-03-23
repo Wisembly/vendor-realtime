@@ -1,12 +1,14 @@
-(function ($) {
+/*global define,require,window,exports*/
 
-  window.WisemblyRealTime = function (options) {
+(function (exports, $, ioLoader) {
+
+  exports.WisemblyRealTime = function (options) {
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.2.2';
+  exports.WisemblyRealTime.version = '0.2.2';
 
-  window.WisemblyRealTime.prototype = {
+  exports.WisemblyRealTime.prototype = {
     init: function (options) {
       this.mode = null;
 
@@ -52,18 +54,24 @@
       var self = this,
           dfd = $.Deferred();
 
-      if (window.io || this.io) {
-        dfd.resolve(window.io || this.io);
-      } else {
-        if (typeof require === 'function' && typeof define === 'function' && typeof define.amd === 'object') {
-          require([this.options.client], dfd.resolve, dfd.reject);
-        } else {
-          $.ajax({ url: this.options.client, dataType: 'script', timeout: 5000 })
-            .always(function () {
-              dfd[window.io ? 'resolve' : 'reject'](window.io);
-            });
-        }
+      var $fallback = function (client) {
+        return $.ajax({ url: client, dataType: 'script', timeout: 5000 });
+      };
+
+      var onSuccess = function (value) {
+        dfd.resolve(value); };
+
+      var onFailure = function (error) {
+        dfd.reject(error); };
+
+      if (this.io) {
+        onSuccess(this.io);
+      } else try {
+        ioLoader($fallback, this.options.client, onSuccess, onFailure);
+      } catch (e) {
+        onFailure(e);
       }
+
       return dfd.promise().done(function (io) {
         // console.log('[realtime]', 'getIOClient', !!io);
         self.io = io;
@@ -720,4 +728,52 @@
       }
     }
   };
-})(jQuery);
+})((function () {
+
+  if (typeof window !== 'undefined')
+    return window; // browser
+
+  if (typeof exports !== 'undefined')
+    return exports; // node / webpack
+
+  throw new Error('No suitable export target');
+
+})(), (function () {
+
+  // it is assumed that jQuery has to be synchronously available
+
+  if (typeof window !== 'undefined')
+    return window.$; // browser
+
+  if (typeof require !== 'undefined' && !require.amd)
+    return require('jquery'); // node / webpack
+
+  throw new Error('No suitable way to find the jQuery dependency');
+
+})(), (function ($fallback, client, resolve, reject) {
+
+  // however, Socket.io can be asynchronously loaded
+
+  if (typeof window !== 'undefined' && window.io)
+    return resolve(window.io); // browser
+
+  if (typeof define !== 'undefined' && define.amd)
+    return require([client], resolve, reject); // require.js
+
+  // The following two lines help webpack to detect that we will be needing the socket.io-client package
+  if (typeof require !== 'undefined' && client === 'socket.io-client')
+    return resolve(require('socket.io-client')); // webpack
+
+  if (typeof require !== 'undefined')
+    return resolve(require(client)); // node
+
+  if (typeof window !== 'undefined') {
+    return $fallback(client).always(function () {
+      if (window.io) resolve(window.io); // browser + jquery
+      else reject(new Error('No suitable way to find the Socket.io dependency'));
+    });
+  }
+
+  throw new Error('No suitable way to find the Socket.io dependency');
+
+}));

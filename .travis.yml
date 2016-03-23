@@ -4,5 +4,4 @@ node_js:
   - "0.11"
 
 script:
-  - npm install -g bower
   - npm test
