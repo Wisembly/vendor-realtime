@@ -43,11 +43,7 @@
         forceNew: true,
         inactivityTimeout: 0,
         transports: ['websocket', 'polling']
-        //'secure': true,
-        onPushMissedReport: function () {}, // When the push server should be logged in, but an event is fetched through the API
-        onPushUp: function () {},           // When the push server goes up
-        onPushDown: function () {},         // When the push server goes down
-        onPullReport: function () {}        // When events are fetched through the API while the push server is being down
+        //'secure': true
       };
 
       this.setOptions(options);
@@ -544,7 +540,7 @@
     },
 
     onSocketConnect: function () {
-      this.options.onPushUp();
+      this.trigger('pushUp');
       this.setStates({ push: 'connected', polling: 'medium' });
       this.resolvePromise('push:connecting');
     },
@@ -560,7 +556,7 @@
 
     onSocketDisconnect: function (error) {
       var self = this;
-      this.options.onPushDown(error);
+      this.trigger('pushDown');
       this.resolvePromise('push:disconnecting')
         .fail(function () {
           self.setStates({ push: 'offline', polling: 'full' });
