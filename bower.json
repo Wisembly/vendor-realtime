@@ -12,6 +12,7 @@
     "tests"
   ],
   "dependencies": {
-    "jquery": "#>=1.6"
+    "jquery": "#>=1.6",
+    "socket.io-client": "1.3.5"
   }
 }

@@ -1,6 +1,6 @@
 /*global define,require,window,exports*/
 
-(function (exports, $, ioLoader) {
+(function (exports, $, io) {
 
   var WisemblyRealTime = exports(function (options) {
     this.init(options);
@@ -31,7 +31,6 @@
         apiHost: null,
         apiNamespace: 'api/4/',
         apiToken: null,
-        client: 'https://cdn.socket.io/socket.io-1.2.1.js',
         server: null,
         reconnection: true,
         reconnectionAttempts: Infinity,
@@ -51,34 +50,6 @@
       this.options = $.extend({}, this.options, options);
     },
 
-    getIOClient: function () {
-      var self = this,
-          dfd = $.Deferred();
-
-      var $fallback = function (client) {
-        return $.ajax({ url: client, dataType: 'script', timeout: 5000 });
-      };
-
-      var onSuccess = function (value) {
-        dfd.resolve(value); };
-
-      var onFailure = function (error) {
-        dfd.reject(error); };
-
-      if (this.io) {
-        onSuccess(this.io);
-      } else try {
-        ioLoader($fallback, this.options.client, onSuccess, onFailure);
-      } catch (e) {
-        onFailure(e);
-      }
-
-      return dfd.promise().done(function (io) {
-        // console.log('[realtime]', 'getIOClient', !!io);
-        self.io = io;
-      });
-    },
-
     connect: function (options) {
       // console.log('[realtime]', 'connect', this.options);
       switch (this.states['push']) {
@@ -91,25 +62,17 @@
       var self = this,
           dfd = $.Deferred();
 
-      this.getIOClient()
-        .done(function (io) {
-          self.setState('push', 'connecting');
-          self.storePromise('push:connecting', dfd);
-          self.socket = io(self.options.server, self.options);
-          self.bindSocketEvents();
-        })
-        .fail(function () {
-          self.setState('polling', 'connecting');
-          self.storePromise('polling:connecting', dfd);
-        })
-        .always(function () {
-          self.join(self.offlineContext);
-          self.offlineContext = null;
-        });
+      this.setState('push', 'connecting');
+      this.storePromise('push:connecting', dfd);
+      this.socket = io(this.options.server, this.options);
+      this.bindSocketEvents();
+
+      this.join(this.offlineContext);
+      this.offlineContext = null;
 
       return dfd.promise()
         .done(function () {
-          self.trigger('connected', $.extend({ states: this.states }, options));
+          self.trigger('connected', $.extend({ states: self.states }, options));
           self.startActivityMonitor();
         });
     },
@@ -756,40 +719,22 @@
 
 }), (function () {
 
-  // it is assumed that jQuery has to be synchronously available
-
-  if (typeof window !== 'undefined')
+  if (typeof window !== 'undefined' && window.$)
     return window.$; // browser
 
-  if (typeof require !== 'undefined' && !require.amd)
-    return require('jquery'); // node / webpack
+  if (typeof require !== 'undefined')
+    return require('jquery'); // node / webpack / requirejs
 
-  throw new Error('No suitable way to find the jQuery dependency');
+  throw new Error('Missing jQuery dependency');
 
-})(), (function ($fallback, client, resolve, reject) {
-
-  // however, Socket.io can be asynchronously loaded
+})(), (function () {
 
   if (typeof window !== 'undefined' && window.io)
-    return resolve(window.io); // browser
+    return window.io; // browser
 
-  if (typeof define !== 'undefined' && define.amd)
-    return require([client], resolve, reject); // require.js
+  if (typeof require !== 'undefined')
+    return require('socket.io-client');
 
-  if (typeof require !== 'undefined' && client === 'socket.io-client')
-    return resolve(require('socket.io-client')); // webpack
+  throw new Error('Missing Socket.io dependency');
 
-  if (typeof window !== 'undefined') {
-    return $fallback(client).always(function () {
-      if (window.io) resolve(window.io); // browser + jquery
-      else reject(new Error('No suitable way to find the Socket.io dependency'));
-    });
-  }
-
-  if (typeof require !== 'undefined' && client !== 'socket.io-client') {
-    throw new Error('Node-based environment (such as webpack) don\'t support any other client than socket.io-client');
-  } else {
-    throw new Error('No suitable way to find the Socket.io dependency');
-  }
-
-}));
+})());
