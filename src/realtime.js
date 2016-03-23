@@ -1,10 +1,22 @@
-/*global define,require,window,exports*/
+/*global define,require,module*/
 
-(function (exports, $, io) {
+(function (factory) {
 
-  var WisemblyRealTime = exports(function (options) {
+  if (typeof define !== 'undefined' && define.amd) {
+    define(['jquery', 'socket.io-client'], factory);
+  } else if (typeof require !== 'undefined') {
+    module.exports = factory(require('jquery'), require('socket.io-client'));
+  } else if (typeof window !== 'undefined') {
+    window.WisemblyRealTime = factory(window.$, window.io);
+  } else {
+    throw new Error('Unsupported environment');
+  }
+
+})(function ($, io) {
+
+  var WisemblyRealTime = function (options) {
     this.init(options);
-  });
+  };
 
   WisemblyRealTime.version = '0.3.0';
 
@@ -704,37 +716,6 @@
     }
   };
 
-})((function (WisemblyRealTime) {
-
-  // This function will be called later and should decide how to export the module
-  // Note that in a webpack environment, a global will still be set (we could prevent this if required)
-
-  if (typeof window !== 'undefined')
-    window.WisemblyRealTime = WisemblyRealTime; // browser
-
-  if (typeof module !== 'undefined')
-    module.exports = WisemblyRealTime; // node / webpack
-
   return WisemblyRealTime;
 
-}), (function () {
-
-  if (typeof window !== 'undefined' && window.$)
-    return window.$; // browser
-
-  if (typeof require !== 'undefined')
-    return require('jquery'); // node / webpack / requirejs
-
-  throw new Error('Missing jQuery dependency');
-
-})(), (function () {
-
-  if (typeof window !== 'undefined' && window.io)
-    return window.io; // browser
-
-  if (typeof require !== 'undefined')
-    return require('socket.io-client');
-
-  throw new Error('Missing Socket.io dependency');
-
-})());
+});
