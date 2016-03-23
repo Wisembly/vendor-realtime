@@ -2,13 +2,13 @@
 
 (function (exports, $, ioLoader) {
 
-  exports.WisemblyRealTime = function (options) {
+  var WisemblyRealTime = exports(function (options) {
     this.init(options);
-  };
+  });
 
-  exports.WisemblyRealTime.version = '0.3.0';
+  WisemblyRealTime.version = '0.3.0';
 
-  exports.WisemblyRealTime.prototype = {
+  WisemblyRealTime.prototype = {
     init: function (options) {
       this.mode = null;
 
@@ -742,17 +742,20 @@
     }
   };
 
-})((function () {
+})((function (WisemblyRealTime) {
+
+  // This function will be called later and should decide how to export the module
+  // Note that in a webpack environment, a global will still be set (we could prevent this if required)
 
   if (typeof window !== 'undefined')
-    return window; // browser
+    window.WisemblyRealTime = WisemblyRealTime; // browser
 
-  if (typeof exports !== 'undefined')
-    return exports; // node / webpack
+  if (typeof module !== 'undefined')
+    module.exports = WisemblyRealTime; // node / webpack
 
-  throw new Error('No suitable export target');
+  return WisemblyRealTime;
 
-})(), (function () {
+}), (function () {
 
   // it is assumed that jQuery has to be synchronously available
 
@@ -774,12 +777,8 @@
   if (typeof define !== 'undefined' && define.amd)
     return require([client], resolve, reject); // require.js
 
-  // The following two lines help webpack to detect that we will be needing the socket.io-client package
   if (typeof require !== 'undefined' && client === 'socket.io-client')
     return resolve(require('socket.io-client')); // webpack
-
-  if (typeof require !== 'undefined')
-    return resolve(require(client)); // node
 
   if (typeof window !== 'undefined') {
     return $fallback(client).always(function () {
@@ -788,6 +787,10 @@
     });
   }
 
-  throw new Error('No suitable way to find the Socket.io dependency');
+  if (typeof require !== 'undefined' && client !== 'socket.io-client') {
+    throw new Error('Node-based environment (such as webpack) don\'t support any other client than socket.io-client');
+  } else {
+    throw new Error('No suitable way to find the Socket.io dependency');
+  }
 
 }));
