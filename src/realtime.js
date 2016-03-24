@@ -56,7 +56,6 @@
         transports: ['websocket', 'polling']
         //'secure': true
       };
-
       this.setOptions(options);
     },
 
