@@ -693,9 +693,9 @@
         context = undefined;
       if (!this.__bindings.hasOwnProperty(name))
         this.__bindings[name] = [];
-      this.__bindings[name] = this.__bindings[name].concat([
-        [handler, context, Boolean(once)]
-      ]);
+      this.__bindings[name] = this.__bindings[name].concat([{
+        handler: handler, context: context, once: Boolean(once)
+      }]);
     },
 
     off: function (name, handler, context) {
@@ -704,7 +704,7 @@
       if (!this.__bindings.hasOwnProperty(name))
         return;
       this.__bindings[name] = this.__bindings[name].filter(function (listener) {
-        return listener[0] !== handler || listener[1] !== context;
+        return listener.handler !== handler || listener.context !== context;
       });
     },
 
@@ -722,14 +722,14 @@
 
       var listeners = this.__bindings[name];
 
-      // Remove every "once" listener before actually running them so they will always be called for THIS event
+      // Remove every "once" listener before actually running them so they will always be called for THIS event only
       for (var t = 0, T = listeners.length; t < T; ++ t)
-        if (listeners[t][2])
-          this.off(name, listeners[t][0], listeners[t][1]);
+        if (listeners[t].once)
+          this.off(name, listeners[t].handler, listeners[t].context);
 
       // Finally dispatch the events to the listeners
       for (var t = 0, T = listeners.length; t < T; ++ t) {
-        listeners[t][0].apply(listeners[t][1], args);
+        listeners[t].handler.apply(listeners[t].context, args);
       }
     }
   };
