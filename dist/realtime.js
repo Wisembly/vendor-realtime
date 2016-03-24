@@ -705,8 +705,10 @@
     on: function (name, handler, context, once) {
       if (context === null)
         context = undefined;
+
       if (!this.__bindings.hasOwnProperty(name))
         this.__bindings[name] = [];
+
       this.__bindings[name] = this.__bindings[name].concat([{
         handler: handler, context: context, once: Boolean(once)
       }]);
@@ -715,11 +717,15 @@
     off: function (name, handler, context) {
       if (context === null)
         context = undefined;
+
       if (!this.__bindings.hasOwnProperty(name))
         return;
-      this.__bindings[name] = this.__bindings[name].filter(function (listener) {
-        return listener.handler !== handler || listener.context !== context;
-      });
+
+      for (var filteredListeners = [], t = 0, T = this.__bindings[name].length; t < T; ++ t)
+        if (this.__bindings[name][t].handler !== handler || this.__bindings[name][t].context !== context)
+          filteredListeners.push(this.__bindings[name][t]);
+
+      this.__bindings[name] = filteredListeners;
     },
 
     once: function (name, handler, context) {
