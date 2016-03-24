@@ -702,30 +702,48 @@
      * Triggering
      */
 
-    on: function (name, handler) {
-      if (this.__bindings.hasOwnProperty(name))
-        this.__bindings[name].push(handler);
-      else
-        this.__bindings[name] = [handler];
+    on: function (name, handler, context, once) {
+      if (context === null)
+        context = undefined;
+      if (!this.__bindings.hasOwnProperty(name))
+        this.__bindings[name] = [];
+      this.__bindings[name] = this.__bindings[name].concat([
+        [handler, context, Boolean(once)]
+      ]);
     },
 
-    off: function (name, handler) {
+    off: function (name, handler, context) {
+      if (context === null)
+        context = undefined;
       if (!this.__bindings.hasOwnProperty(name))
         return;
-      var index = $.inArray(handler, this.__bindings[name]);
-      if (index !== -1)
-        this.__bindings[name].splice(index, 1);
+      this.__bindings[name] = this.__bindings[name].filter(function (listener) {
+        return listener[0] !== handler || listener[1] !== context;
+      });
+    },
+
+    once: function (name, handler, context) {
+      this.on(name, handler, context, true);
     },
 
     trigger: function (name) {
       if (!this.__bindings.hasOwnProperty(name))
         return;
 
-      var bindings = this.__bindings[name],
-        args = Array.prototype.slice.call(arguments, 1);
+      // Avoid Array.prototype.slice.call(arguments) to keep the function optimized
+      for (var args = [], t = 0, T = arguments.length; t < T; ++ t)
+        args.push(arguments[t]);
 
-      for (var i = 0; i < bindings.length; i++) {
-        bindings[i].apply(null, args);
+      var listeners = this.__bindings[name];
+
+      // Remove every "once" listener before actually running them so they will always be called for THIS event
+      for (var t = 0, T = listeners.length; t < T; ++ t)
+        if (listeners[t][2])
+          this.off(name, listeners[t][0], listeners[t][1]);
+
+      // Finally dispatch the events to the listeners
+      for (var t = 0, T = listeners.length; t < T; ++ t) {
+        listeners[t][0].apply(listeners[t][1], args);
       }
     }
   };
