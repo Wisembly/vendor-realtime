@@ -51,10 +51,9 @@
         pullInterval: 10000,
         pullIntervalEnhance: 60000,
         forceNew: true,
-        inactivityTimeout: 0,
+        inactivityTimeout: 0
         //'secure': true
       };
-
       this.setOptions(options);
     },
 
