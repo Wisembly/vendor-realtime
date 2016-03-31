@@ -75,7 +75,7 @@
 
       this.setState('push', 'connecting');
       this.storePromise('push:connecting', dfd);
-      this.socket = io(this.options.server, this.options);
+      this.socket = io(this.options.server.toString(), this.options);
       this.bindSocketEvents();
 
       this.join(this.offlineContext);
@@ -557,7 +557,7 @@
     buildURL: function (path) {
       if (!this.options.apiHost || !this.options.apiNamespace)
         return null;
-      var url = this.options.apiHost + '/' + this.options.apiNamespace + '/' + path;
+      var url = this.options.apiHost.toString() + '/' + this.options.apiNamespace.toString() + '/' + path;
       return url.replace(/([^:]\/)\//g, function ($0, $1) { return $1; });
     },
 
