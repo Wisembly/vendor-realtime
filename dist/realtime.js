@@ -1,12 +1,26 @@
-(function ($) {
+/*global define,require,module*/
 
-  window.WisemblyRealTime = function (options) {
+(function (factory) {
+
+  if (typeof define !== 'undefined' && define.amd) {
+    define(['jquery', 'socket.io-client'], factory);
+  } else if (typeof require !== 'undefined') {
+    module.exports = factory(require('jquery'), require('socket.io-client'));
+  } else if (typeof window !== 'undefined') {
+    window.WisemblyRealTime = factory(window.$, window.io);
+  } else {
+    throw new Error('Unsupported environment');
+  }
+
+})(function ($, io) {
+
+  var WisemblyRealTime = function (options) {
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.2.2';
+  WisemblyRealTime.version = '0.3.0';
 
-  window.WisemblyRealTime.prototype = {
+  WisemblyRealTime.prototype = {
     init: function (options) {
       this.mode = null;
 
@@ -29,7 +43,6 @@
         apiHost: null,
         apiNamespace: 'api/4/',
         apiToken: null,
-        client: 'https://cdn.socket.io/socket.io-1.2.1.js',
         server: null,
         reconnection: true,
         reconnectionAttempts: Infinity,
@@ -48,28 +61,6 @@
       this.options = $.extend({}, this.options, options);
     },
 
-    getIOClient: function () {
-      var self = this,
-          dfd = $.Deferred();
-
-      if (window.io || this.io) {
-        dfd.resolve(window.io || this.io);
-      } else {
-        if (typeof require === 'function' && typeof define === 'function' && typeof define.amd === 'object') {
-          require([this.options.client], dfd.resolve, dfd.reject);
-        } else {
-          $.ajax({ url: this.options.client, dataType: 'script', timeout: 5000 })
-            .always(function () {
-              dfd[window.io ? 'resolve' : 'reject'](window.io);
-            });
-        }
-      }
-      return dfd.promise().done(function (io) {
-        // console.log('[realtime]', 'getIOClient', !!io);
-        self.io = io;
-      });
-    },
-
     connect: function (options) {
       // console.log('[realtime]', 'connect', this.options);
       switch (this.states['push']) {
@@ -82,25 +73,17 @@
       var self = this,
           dfd = $.Deferred();
 
-      this.getIOClient()
-        .done(function (io) {
-          self.setState('push', 'connecting');
-          self.storePromise('push:connecting', dfd);
-          self.socket = io(self.options.server, self.options);
-          self.bindSocketEvents();
-        })
-        .fail(function () {
-          self.setState('polling', 'connecting');
-          self.storePromise('polling:connecting', dfd);
-        })
-        .always(function () {
-          self.join(self.offlineContext);
-          self.offlineContext = null;
-        });
+      this.setState('push', 'connecting');
+      this.storePromise('push:connecting', dfd);
+      this.socket = io(this.options.server.toString(), this.options);
+      this.bindSocketEvents();
+
+      this.join(this.offlineContext);
+      this.offlineContext = null;
 
       return dfd.promise()
         .done(function () {
-          self.trigger('connected', $.extend({ states: this.states }, options));
+          self.trigger('connected', $.extend({ states: self.states }, options));
           self.startActivityMonitor();
         });
     },
@@ -457,17 +440,26 @@
           data = data.success || data;
           data = data.data || data;
 
-          var count = 0;
+          var count = 0, sum = 0;
           $.each(data.data || [], function(index, eventData) {
-            count += self.handleEvent($.extend({}, eventData, { via: 'polling' })) ? 1 : 0;
+            if (self.handleEvent($.extend({}, eventData, { via: 'polling' }))) {
+              sum += data.since - eventData.time;
+              count += 1;
+            }
           });
+
           switch (self.getState()) {
             case 'polling:full':
+              if (count) {
+                self.trigger('pullReport', count);
+              }
               break;
             case 'push:connected':
             case 'push:connecting':
-              if (count)
+              if (count) {
                 console.warn('[realtime] missed_push_event:' + count + ': on ' + data.data.length + ' events');
+                self.trigger('pushMissedReport', count, sum / count);
+              }
               break;
           }
 
@@ -527,17 +519,19 @@
     },
 
     onSocketConnect: function () {
+      this.trigger('pushUp');
       this.setStates({ push: 'connected', polling: 'medium' });
       this.resolvePromise('push:connecting');
     },
 
-    onSocketConnectError: function () {
-      this.onSocketDisconnect();
+    onSocketConnectError: function (error) {
+      this.onSocketDisconnect(error);
       this.resolvePromise('push:connecting');
     },
 
-    onSocketDisconnect: function () {
+    onSocketDisconnect: function (error) {
       var self = this;
+      this.trigger('pushDown');
       this.resolvePromise('push:disconnecting')
         .fail(function () {
           self.setStates({ push: 'offline', polling: 'full' });
@@ -563,7 +557,7 @@
     buildURL: function (path) {
       if (!this.options.apiHost || !this.options.apiNamespace)
         return null;
-      var url = this.options.apiHost + '/' + this.options.apiNamespace + '/' + path;
+      var url = this.options.apiHost.toString() + '/' + this.options.apiNamespace.toString() + '/' + path;
       return url.replace(/([^:]\/)\//g, function ($0, $1) { return $1; });
     },
 
@@ -693,31 +687,58 @@
      * Triggering
      */
 
-    on: function (name, handler) {
-      if (this.__bindings.hasOwnProperty(name))
-        this.__bindings[name].push(handler);
-      else
-        this.__bindings[name] = [handler];
+    on: function (name, handler, context, once) {
+      if (context === null)
+        context = undefined;
+
+      if (!this.__bindings.hasOwnProperty(name))
+        this.__bindings[name] = [];
+
+      this.__bindings[name] = this.__bindings[name].concat([{
+        handler: handler, context: context, once: Boolean(once)
+      }]);
     },
 
-    off: function (name, handler) {
+    off: function (name, handler, context) {
+      if (context === null)
+        context = undefined;
+
       if (!this.__bindings.hasOwnProperty(name))
         return;
-      var index = $.inArray(handler, this.__bindings[name]);
-      if (index !== -1)
-        this.__bindings[name].splice(index, 1);
+
+      for (var filteredListeners = [], t = 0, T = this.__bindings[name].length; t < T; ++ t)
+        if (this.__bindings[name][t].handler !== handler || this.__bindings[name][t].context !== context)
+          filteredListeners.push(this.__bindings[name][t]);
+
+      this.__bindings[name] = filteredListeners;
+    },
+
+    once: function (name, handler, context) {
+      this.on(name, handler, context, true);
     },
 
     trigger: function (name) {
       if (!this.__bindings.hasOwnProperty(name))
         return;
 
-      var bindings = this.__bindings[name],
-        args = Array.prototype.slice.call(arguments, 1);
+      // Avoid Array.prototype.slice.call(arguments) to keep the function optimized
+      for (var args = [], t = 0, T = arguments.length; t < T; ++ t)
+        args.push(arguments[t]);
 
-      for (var i = 0; i < bindings.length; i++) {
-        bindings[i].apply(null, args);
+      var listeners = this.__bindings[name];
+
+      // Remove every "once" listener before actually running them so they will always be called for THIS event only
+      for (var t = 0, T = listeners.length; t < T; ++ t)
+        if (listeners[t].once)
+          this.off(name, listeners[t].handler, listeners[t].context);
+
+      // Finally dispatch the events to the listeners
+      for (var t = 0, T = listeners.length; t < T; ++ t) {
+        listeners[t].handler.apply(listeners[t].context, args);
       }
     }
   };
-})(jQuery);
+
+  return WisemblyRealTime;
+
+});
