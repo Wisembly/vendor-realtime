@@ -565,7 +565,7 @@
       var self = this,
           token = this.options.apiToken,
           url = this.buildURL(path);
-      if (!url)
+      if (!url || !token)
         return $.Deferred().reject().promise();
       options = $.extend(true, {
           url: url,
