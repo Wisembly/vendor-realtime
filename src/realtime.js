@@ -4,7 +4,7 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.2.2';
+  window.WisemblyRealTime.version = '0.2.3';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -100,7 +100,7 @@
 
       return dfd.promise()
         .done(function () {
-          self.trigger('connected', $.extend({ states: this.states }, options));
+          self.trigger('connected', $.extend({ states: self.states }, options));
           self.startActivityMonitor();
         });
     },
@@ -139,7 +139,9 @@
           self.rooms = [];
           self.analytics = [];
           self.promises = {};
-          self.trigger('disconnected', $.extend({ states: this.states }, options));
+          self.events = {};
+          self.entities = {};
+          self.trigger('disconnected', $.extend({ states: self.states }, options));
         });
     },
 
@@ -302,10 +304,6 @@
       this.events[eventData.hash] = true;
     },
 
-    removeEvents: function () {
-      this.events = {};
-    },
-
     checkEvent: function (eventData) {
       // accept eventData if event not registered yet
       return !this.events.hasOwnProperty(eventData.hash);
@@ -396,6 +394,7 @@
         if (self.states['push'] !== 'connected')
           return;
         intervall = Math.min(intervall || 0, self.options.reconnectionDelayMax);
+        clearTimeout(self.pushRejoinTimer);
         self.pushRejoinTimer = setTimeout(function () {
           fnRejoinRequest(intervall);
         }, intervall);
@@ -425,6 +424,7 @@
       }
 
       function fnPullIntervall() {
+        clearTimeout(self.pullTimer);
         switch (self.states['polling']) {
           case 'full':
             self.pullTimer = setTimeout(fnPullRequest, self.options.pullInterval);
