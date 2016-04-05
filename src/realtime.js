@@ -61,6 +61,12 @@
 
     setOptions: function (options) {
       this.options = $.extend({}, this.options, options);
+
+      if (this.options.apiToken && this.offlineContext) {
+        var offlineContext = this.offlineContext;
+        this.offlineContext = null;
+        this.join(offlineContext);
+      }
     },
 
     connect: function (options) {
@@ -80,8 +86,11 @@
       this.socket = io(this.options.server.toString(), this.options);
       this.bindSocketEvents();
 
-      this.join(this.offlineContext);
-      this.offlineContext = null;
+      if (this.options.apiToken) {
+          var offlineContext = this.offlineContext;
+          this.offlineContext = null;
+          this.join(offlineContext);
+      }
 
       return dfd.promise()
         .done(function () {
@@ -207,7 +216,10 @@
       var self = this,
           dfd = $.Deferred();
 
-      switch (this.getState()) {
+      if (!this.options.apiToken) {
+        this.offlineContext = $.extend({}, this.offlineContext, params);
+        dfd.reject();
+      } else switch (this.getState()) {
         case 'push:connected':
           this.joinFromPush(params)
             .done(dfd.resolve)
