@@ -4,7 +4,7 @@
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.2.3';
+  window.WisemblyRealTime.version = '0.2.4';
 
   window.WisemblyRealTime.prototype = {
     init: function (options) {
@@ -38,7 +38,8 @@
         pullInterval: 10000,
         pullIntervalEnhance: 60000,
         forceNew: true,
-        inactivityTimeout: 0
+        inactivityTimeout: 0,
+        transports: ['websocket', 'polling']
         //'secure': true
       };
       this.setOptions(options);
@@ -409,6 +410,12 @@
       this.pushRejoinTimer = null;
     },
 
+    getPushTransport: function () {
+      if (this.states['push'] !== 'connected')
+        return null;
+      return !!this.socket.io.engine.transport.ws ? 'websocket' : 'polling';
+    },
+
     /*
      * Polling
      */
@@ -457,20 +464,10 @@
           data = data.success || data;
           data = data.data || data;
 
-          var count = 0;
           $.each(data.data || [], function(index, eventData) {
-            count += self.handleEvent($.extend({}, eventData, { via: 'polling' })) ? 1 : 0;
+            if (self.handleEvent($.extend({}, eventData, { via: 'polling' })) && self.states['polling'] !== 'full')
+                self.trigger('missed', eventData);
           });
-          switch (self.getState()) {
-            case 'polling:full':
-              break;
-            case 'push:connected':
-            case 'push:connecting':
-              if (count)
-                console.warn('[realtime] missed_push_event:' + count + ': on ' + data.data.length + ' events');
-              break;
-          }
-
           self.lastPullTime = data.since > (self.lastPullTime || 0) ? data.since : self.lastPullTime;
         })
         .always(function () {
@@ -647,11 +644,13 @@
 
       // on current state changed
       if (this.state !== state) {
+        // store previous state
+        var previousState = this.state;
         // store current state
         this.state = state;
         // console.log('[realtime] setStates:', states, state);
         // trigger 'state:update'
-        this.trigger('state', { state: state });
+        this.trigger('state', { state: state, previous: previousState });
       }
 
       // on polling state changed
