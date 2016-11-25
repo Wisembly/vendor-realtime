@@ -18,6 +18,7 @@
 
       this.__bindings = {};
 
+      this.uuid = '------------------------------------';
       this.promises = {};
       this.rooms = [];
       this.analytics = [];
@@ -486,6 +487,11 @@
         self.onSocketBroadcast.apply(self, arguments);
       });
 
+      this.socket.on('uuid', function (data) {
+        console.log('[realtime] Your unique connection ID is: ' + data.uuid);
+        self.onSocketUuid.apply(self, arguments);
+      });
+
       this.socket.on('connect', function () {
         console.log('[realtime] Welcome to the Wisembly websocket server');
         self.onSocketConnect.apply(self, arguments);
@@ -526,6 +532,10 @@
     onSocketConnect: function () {
       this.setStates({ push: 'connected', polling: 'medium' });
       this.resolvePromise('push:connecting');
+    },
+
+    onSocketUuid: function (data) {
+      this.uuid = data.uuid;
     },
 
     onSocketConnectError: function () {
