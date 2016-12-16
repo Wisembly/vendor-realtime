@@ -59,6 +59,12 @@
 
     setOptions: function (options) {
       this.options = $.extend({}, this.options, options);
+
+      if (this.options.apiToken && this.offlineContext) {
+        var offlineContext = this.offlineContext;
+        this.offlineContext = null;
+        this.join(offlineContext);
+      }
     },
 
     connect: function (options) {
@@ -78,8 +84,11 @@
       this.socket = io(this.options.server.toString(), this.options);
       this.bindSocketEvents();
 
-      this.join(this.offlineContext);
-      this.offlineContext = null;
+      if (this.options.apiToken) {
+          var offlineContext = this.offlineContext;
+          this.offlineContext = null;
+          this.join(offlineContext);
+      }
 
       return dfd.promise()
         .done(function () {
@@ -203,7 +212,10 @@
       var self = this,
           dfd = $.Deferred();
 
-      switch (this.getState()) {
+      if (!this.options.apiToken) {
+        this.offlineContext = $.extend({}, this.offlineContext, params);
+        dfd.reject();
+      } else switch (this.getState()) {
         case 'push:connected':
           this.joinFromPush(params)
             .done(dfd.resolve)
@@ -565,7 +577,7 @@
       var self = this,
           token = this.options.apiToken,
           url = this.buildURL(path);
-      if (!url)
+      if (!url || !token)
         return $.Deferred().reject().promise();
       options = $.extend(true, {
           url: url,
@@ -722,7 +734,8 @@
         return;
 
       // Avoid Array.prototype.slice.call(arguments) to keep the function optimized
-      for (var args = [], t = 0, T = arguments.length; t < T; ++ t)
+      // Also: we start at 1 instead of 0 so that we avoid copying the "name" argument
+      for (var args = [], t = 1, T = arguments.length; t < T; ++ t)
         args.push(arguments[t]);
 
       var listeners = this.__bindings[name];

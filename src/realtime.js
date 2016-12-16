@@ -734,7 +734,8 @@
         return;
 
       // Avoid Array.prototype.slice.call(arguments) to keep the function optimized
-      for (var args = [], t = 0, T = arguments.length; t < T; ++ t)
+      // Also: we start at 1 instead of 0 so that we avoid copying the "name" argument
+      for (var args = [], t = 1, T = arguments.length; t < T; ++ t)
         args.push(arguments[t]);
 
       var listeners = this.__bindings[name];
