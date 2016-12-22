@@ -3,13 +3,25 @@
 (function (factory) {
 
   if (typeof define !== 'undefined' && define.amd) {
+
     define(['jquery', 'socket.io-client'], factory);
-  } else if (typeof require !== 'undefined') {
+
+  } else if (typeof module !== 'undefined') {
+
     module.exports = factory(require('jquery'), require('socket.io-client'));
+
   } else if (typeof window !== 'undefined') {
-    window.WisemblyRealTime = factory(window.$, window.io);
+
+    if (typeof window.$ !== 'undefined' && typeof window.io !== 'undefined') {
+      window.WisemblyRealTime = factory(window.$, window.io);
+    } else if (typeof require !== 'undefined') {
+      window.WisemblyRealTime = factory(require('jquery'), require('socket.io-client'));
+    }
+
   } else {
+
     throw new Error('Unsupported environment');
+
   }
 
 })(function ($, io) {
