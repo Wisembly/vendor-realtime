@@ -1,12 +1,38 @@
-(function ($) {
+/*global define,require,module*/
 
-  window.WisemblyRealTime = function (options) {
+(function (factory) {
+
+  if (typeof define !== 'undefined' && define.amd) {
+
+    define(['jquery', 'socket.io-client'], factory);
+
+  } else if (typeof module !== 'undefined') {
+
+    module.exports = factory(require('jquery'), require('socket.io-client'));
+
+  } else if (typeof window !== 'undefined') {
+
+    if (typeof window.$ !== 'undefined' && typeof window.io !== 'undefined') {
+      window.WisemblyRealTime = factory(window.$, window.io);
+    } else if (typeof require !== 'undefined') {
+      window.WisemblyRealTime = factory(require('jquery'), require('socket.io-client'));
+    }
+
+  } else {
+
+    throw new Error('Unsupported environment');
+
+  }
+
+})(function ($, io) {
+
+  var WisemblyRealTime = function (options) {
     this.init(options);
   };
 
-  window.WisemblyRealTime.version = '0.2.4';
+  WisemblyRealTime.version = '0.3.0';
 
-  window.WisemblyRealTime.prototype = {
+  WisemblyRealTime.prototype = {
     init: function (options) {
       this.mode = null;
 
@@ -30,7 +56,6 @@
         apiHost: null,
         apiNamespace: 'api/4/',
         apiToken: null,
-        client: 'https://cdn.socket.io/socket.io-1.2.1.js',
         server: null,
         reconnection: true,
         reconnectionAttempts: Infinity,
@@ -48,28 +73,12 @@
 
     setOptions: function (options) {
       this.options = $.extend({}, this.options, options);
-    },
 
-    getIOClient: function () {
-      var self = this,
-          dfd = $.Deferred();
-
-      if (window.io || this.io) {
-        dfd.resolve(window.io || this.io);
-      } else {
-        if (typeof require === 'function' && typeof define === 'function' && typeof define.amd === 'object') {
-          require([this.options.client], dfd.resolve, dfd.reject);
-        } else {
-          $.ajax({ url: this.options.client, dataType: 'script', timeout: 5000 })
-            .always(function () {
-              dfd[window.io ? 'resolve' : 'reject'](window.io);
-            });
-        }
+      if (this.options.apiToken && this.offlineContext) {
+        var offlineContext = this.offlineContext;
+        this.offlineContext = null;
+        this.join(offlineContext);
       }
-      return dfd.promise().done(function (io) {
-        // console.log('[realtime]', 'getIOClient', !!io);
-        self.io = io;
-      });
     },
 
     connect: function (options) {
@@ -84,21 +93,16 @@
       var self = this,
           dfd = $.Deferred();
 
-      this.getIOClient()
-        .done(function (io) {
-          self.setState('push', 'connecting');
-          self.storePromise('push:connecting', dfd);
-          self.socket = io(self.options.server, self.options);
-          self.bindSocketEvents();
-        })
-        .fail(function () {
-          self.setState('polling', 'connecting');
-          self.storePromise('polling:connecting', dfd);
-        })
-        .always(function () {
-          self.join(self.offlineContext);
-          self.offlineContext = null;
-        });
+      this.setState('push', 'connecting');
+      this.storePromise('push:connecting', dfd);
+      this.socket = io(this.options.server.toString(), this.options);
+      this.bindSocketEvents();
+
+      if (this.options.apiToken) {
+          var offlineContext = this.offlineContext;
+          this.offlineContext = null;
+          this.join(offlineContext);
+      }
 
       return dfd.promise()
         .done(function () {
@@ -224,7 +228,10 @@
       var self = this,
           dfd = $.Deferred();
 
-      switch (this.getState()) {
+      if (!this.options.apiToken) {
+        this.offlineContext = $.extend({}, this.offlineContext, params);
+        dfd.reject();
+      } else switch (this.getState()) {
         case 'push:connected':
           this.joinFromPush(params)
             .done(dfd.resolve)
@@ -469,6 +476,7 @@
             if (self.handleEvent($.extend({}, eventData, { via: 'polling' })) && self.states['polling'] !== 'full')
                 self.trigger('missed', eventData);
           });
+
           self.lastPullTime = data.since > (self.lastPullTime || 0) ? data.since : self.lastPullTime;
         })
         .always(function () {
@@ -530,6 +538,7 @@
     },
 
     onSocketConnect: function () {
+      this.trigger('pushUp');
       this.setStates({ push: 'connected', polling: 'medium' });
       this.resolvePromise('push:connecting');
     },
@@ -538,13 +547,14 @@
       this.uuid = data.uuid;
     },
 
-    onSocketConnectError: function () {
-      this.onSocketDisconnect();
+    onSocketConnectError: function (error) {
+      this.onSocketDisconnect(error);
       this.resolvePromise('push:connecting');
     },
 
-    onSocketDisconnect: function () {
+    onSocketDisconnect: function (error) {
       var self = this;
+      this.trigger('pushDown');
       this.resolvePromise('push:disconnecting')
         .fail(function () {
           self.setStates({ push: 'offline', polling: 'full' });
@@ -570,7 +580,7 @@
     buildURL: function (path) {
       if (!this.options.apiHost || !this.options.apiNamespace)
         return null;
-      var url = this.options.apiHost + '/' + this.options.apiNamespace + '/' + path;
+      var url = this.options.apiHost.toString() + '/' + this.options.apiNamespace.toString() + '/' + path;
       return url.replace(/([^:]\/)\//g, function ($0, $1) { return $1; });
     },
 
@@ -578,7 +588,7 @@
       var self = this,
           token = this.options.apiToken,
           url = this.buildURL(path);
-      if (!url)
+      if (!url || !token)
         return $.Deferred().reject().promise();
       options = $.extend(true, {
           url: url,
@@ -737,7 +747,8 @@
         return;
 
       // Avoid Array.prototype.slice.call(arguments) to keep the function optimized
-      for (var args = [], t = 0, T = arguments.length; t < T; ++ t)
+      // Also: we start at 1 instead of 0 so that we avoid copying the "name" argument
+      for (var args = [], t = 1, T = arguments.length; t < T; ++ t)
         args.push(arguments[t]);
 
       var listeners = this.__bindings[name];
@@ -753,4 +764,7 @@
       }
     }
   };
-})(jQuery);
+
+  return WisemblyRealTime;
+
+});
