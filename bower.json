@@ -1,6 +1,6 @@
 {
   "name": "wisembly-vendor-realtime",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "moduleType": [
     "globals"
   ],
@@ -12,6 +12,7 @@
     "tests"
   ],
   "dependencies": {
-    "jquery": "#>=1.6"
+    "jquery": "#>=1.6",
+    "socket.io-client": "1.7.2"
   }
 }

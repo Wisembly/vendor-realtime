@@ -1,24 +1,25 @@
 {
+    "name": "wisembly-vendor-realtime",
+    "main": "src/realtime.js",
+    "version": "0.3.0",
     "scripts": {
-        "test": "bower install && node node_modules/karma/bin/karma start test/karma.config.js",
-        "build": "node node_modules/gulp/bin/gulp.js"
+        "test": "$(npm bin)/bower install && $(npm bin)/karma start test/karma.config.js",
+        "build": "$(npm bin)/gulp"
     },
-    "dependencies": {},
+    "dependencies": {
+        "jquery": ">=1.6",
+        "socket.io-client": "1.7.2"
+    },
     "devDependencies": {
+        "bower": "*",
         "karma": "*",
         "karma-mocha": "*",
         "karma-sinon-expect": "*",
-        "karma-chrome-launcher": "*",
-        "karma-firefox-launcher": "*",
-        "karma-safari-launcher": "*",
-        "karma-opera-launcher": "*",
-        "karma-ie-launcher": "*",
         "karma-phantomjs-launcher": "*",
         "gulp": "*",
         "gulp-uglify": "*",
-        "gulp-rename": "*"
-    },
-    "spm": {
-        "main": "src/realtime.js"
+        "gulp-rename": "*",
+        "mocha": "*",
+        "phantomjs-prebuilt": "*"
     }
 }
