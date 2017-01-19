@@ -1,5 +1,11 @@
 {
     "name": "wisembly-vendor-realtime",
+    "description": "Realtime javascript client used between Wisembly and Solid",
+    "repository": {
+        "type": "git",
+        "url": "git://github.com/Wisembly/vendor-realtime.git"
+    },
+    "license": "MIT",
     "main": "src/realtime.js",
     "version": "0.3.0",
     "scripts": {
