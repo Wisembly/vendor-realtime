@@ -155,11 +155,11 @@
       var self = this,
           dfd = $.Deferred();
 
-      this.socket.emit('ping', { timestamp: +(new Date()) } , function (name, data) {
-        if ('pong' !== name) {
+      this.socket.emit('_ping', { timestamp: +(new Date()) } , function (name, data) {
+        if ('_pong' !== name) {
           dfd.reject();
         } else {
-          self.trigger('pong', data);
+          self.trigger('_pong', data);
           dfd.resolve(data);
         }
       });
