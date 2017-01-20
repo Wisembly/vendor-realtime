@@ -7,7 +7,7 @@
     },
     "license": "MIT",
     "main": "src/realtime.js",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "scripts": {
         "test": "$(npm bin)/bower install && $(npm bin)/karma start test/karma.config.js",
         "build": "$(npm bin)/gulp"
