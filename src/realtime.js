@@ -26,6 +26,29 @@
 
 })(function ($, io) {
 
+  // http://youmightnotneedjquery.com/
+  let _deepExtend = (out) => {
+    out = out || {};
+
+    for (let i = 1; i < arguments.length; i++) {
+      let obj = arguments[i];
+
+      if (!obj)
+        continue;
+
+      for (var key in obj) {
+        if (obj.hasOwnProperty(key)) {
+          if (typeof obj[key] === 'object')
+            out[key] = _deepExtend(out[key], obj[key]);
+          else
+            out[key] = obj[key];
+        }
+      }
+    }
+
+    return out;
+  }
+
   var WisemblyRealTime = function (options) {
     this.init(options);
   };
@@ -72,7 +95,7 @@
     },
 
     setOptions: function (options) {
-      this.options = $.extend({}, this.options, options);
+      this.options = Object.assign({}, this.options, options);
 
       if (this.options.apiToken && this.offlineContext) {
         var offlineContext = this.offlineContext;
@@ -106,7 +129,7 @@
 
       return dfd.promise()
         .done(function () {
-          self.trigger('connected', $.extend({ states: self.states }, options));
+          self.trigger('connected', Object.assign({}, { states: self.states }, options));
           self.startActivityMonitor();
         });
     },
@@ -147,7 +170,7 @@
           self.promises = {};
           self.events = {};
           self.entities = {};
-          self.trigger('disconnected', $.extend({ states: self.states }, options));
+          self.trigger('disconnected', Object.assign({}, { states: self.states }, options));
         });
     },
 
@@ -177,7 +200,7 @@
       if (!this.socket) {
         dfd.reject();
       } else {
-        this.socket.emit('join', $.extend({ token: this.options.apiToken }, params), function (error, rooms, headers) {
+        this.socket.emit('join', Object.assign({}, { token: this.options.apiToken }, params), function (error, rooms, headers) {
           headers = headers || {};
           if ('date' in headers)
             self.lastPullTime = self.lastPullTime || +(new Date(headers['date']));
@@ -229,7 +252,7 @@
           dfd = $.Deferred();
 
       if (!this.options.apiToken) {
-        this.offlineContext = $.extend({}, this.offlineContext, params);
+        this.offlineContext = Object.assign({}, this.offlineContext, params);
         dfd.reject();
       } else switch (this.getState()) {
         case 'push:connected':
@@ -254,7 +277,7 @@
           this.joinFromAPI(params).done(dfd.resolve).fail(dfd.reject);
           break;
         default:
-          this.offlineContext = $.extend({}, this.offlineContext, params);
+          this.offlineContext = Object.assign({}, this.offlineContext, params);
           dfd.reject();
       }
 
@@ -473,7 +496,7 @@
           data = data.data || data;
 
           $.each(data.data || [], function(index, eventData) {
-            if (self.handleEvent($.extend({}, eventData, { via: 'polling' })) && self.states['polling'] !== 'full')
+            if (self.handleEvent(Object.assign({}, eventData, { via: 'polling' })) && self.states['polling'] !== 'full')
                 self.trigger('missed', eventData);
           });
 
@@ -534,7 +557,7 @@
 
     onSocketBroadcast: function (data) {
       var data = JSON.parse(data);
-      this.handleEvent($.extend({}, data, { via: 'socket' }));
+      this.handleEvent(Object.assign({}, data, { via: 'socket' }));
     },
 
     onSocketConnect: function () {
@@ -590,7 +613,7 @@
           url = this.buildURL(path);
       if (!url || !token)
         return $.Deferred().reject().promise();
-      options = $.extend(true, {
+      options = _deepExtend({
           url: url,
           type: 'GET',
           dataType: 'json',
@@ -602,14 +625,14 @@
       }, options);
       return $.ajax(options)
         .fail(function (jqXHR, textStatus, errorThrown) {
-          var data = { request: $.extend({ path: path, token: token }, options) };
-          try { data = $.extend(data, jqXHR ? $.parseJSON(jqXHR.responseText) : {}); } catch (e) { }
+          var data = { request: Object.assign({}, { path: path, token: token }, options) };
+          try { data = Object.assign({}, data, jqXHR ? $.parseJSON(jqXHR.responseText) : {}); } catch (e) { }
           self.trigger('error', data);
         });
     },
 
     fetchRooms: function (options) {
-      return this.apiRequest('users/node/credentials', $.extend({
+      return this.apiRequest('users/node/credentials', Object.assign({}, {
         type: 'POST'
       }, options));
     },
