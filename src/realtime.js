@@ -607,12 +607,10 @@
       return url.replace(/([^:]\/)\//g, function ($0, $1) { return $1; });
     },
 
-    apiRequest: function (path, options) {
-      var self = this,
-          token = this.options.apiToken,
+    apiRequest: (path, options) => {
+      let token = this.options.apiToken,
           url = this.buildURL(path);
-      if (!url || !token)
-        return $.Deferred().reject().promise();
+
       options = _deepExtend({
           url: url,
           type: 'GET',
@@ -623,12 +621,63 @@
           },
           cache: false
       }, options);
-      return $.ajax(options)
-        .fail(function (jqXHR, textStatus, errorThrown) {
-          var data = { request: Object.assign({}, { path: path, token: token }, options) };
-          try { data = Object.assign({}, data, jqXHR ? $.parseJSON(jqXHR.responseText) : {}); } catch (e) { }
-          self.trigger('error', data);
-        });
+
+      return new Promise((resolve, reject) => {
+
+        if (!url || !token)
+          reject(Error('No URL or token'));
+
+        let request = new XMLHttpRequest();
+
+        let requestHeaders = Object.assign({
+          "Content-Type": options.contentType,
+          "Cache-Control": !options.cache ? "max-age=0" : options.cache
+        }, options.headers);
+
+        request.open(options.type, options.url, true);
+
+        for (key in requestHeaders) {
+          request.setRequestHeader(header, requestHeaders[key]);
+        }
+
+        request.responseType(options.dataType);
+
+        request.onreadystatechange = () => {
+          if (request.status == 200) {
+
+            resolve(request.response);
+
+          } else {
+
+            let response = JSON.parse(request.response);
+            let errorMessage = response.error && response.error.message;
+
+            let data = Object.assign(
+              { request: Object.assign({}, { path: path, token: token }, options) },
+              errorMessage ? errorMessage : {}
+            );
+            this.trigger('error', data);
+            reject(Error(request.statusText));
+
+          }
+        }
+
+        request.onerror = () => {
+          this.trigger('error');
+          reject(Error('Network error'));
+        };
+
+        request.ontimeout = () => {
+          this.trigger('error');
+          reject(Error('Timeout'));
+        };
+
+        if (options.get === 'GET') {
+          request.send();
+        } else {
+          request.send(options.data);
+        }
+      };
     },
 
     fetchRooms: function (options) {
