@@ -222,25 +222,29 @@
 
     joinFromAPI: function (params) {
       // console.log('[realtime] joinFromAPI', params);
-      var self = this,
-          dfd = $.Deferred();
+      let dfd = $.Deferred();
+      let rooms = this.rooms;
 
       this.fetchRooms({ data: JSON.stringify(params) })
-        .done(function (data, status, jqXHR) {
+        .done((data, status, jqXHR) => {
           data = data.success || data;
           data = data.data || data;
-          $.each(data.rooms, function (index, room) {
-            if ($.inArray(room, self.rooms) === -1)
-              self.rooms.push(room);
-          });
-          if (jqXHR.getResponseHeader('Date'))
-            self.lastPullTime = self.lastPullTime || +(new Date(jqXHR.getResponseHeader('Date')));
-          self.setState('polling', 'full');
-          self.resolvePromise('polling:connecting');
 
-          console.log('[realtime] Successfully retrieved %d rooms from Wisembly API', self.rooms.length, self.rooms);
-          self.trigger('rooms', { rooms: self.rooms });
-          dfd.resolve(self.rooms);
+          let fetchedRooms = data.rooms;
+
+          fetchedRooms.forEach((room, index) => {
+            if (!rooms.includes(room))
+              rooms.push(room);
+          });
+
+          if (jqXHR.getResponseHeader('Date'))
+            this.lastPullTime = this.lastPullTime || +(new Date(jqXHR.getResponseHeader('Date')));
+          this.setState('polling', 'full');
+          this.resolvePromise('polling:connecting');
+
+          console.log('[realtime] Successfully retrieved %d rooms from Wisembly API', rooms.length, rooms);
+          this.trigger('rooms', { rooms: rooms });
+          dfd.resolve(rooms);
         })
         .fail(dfd.reject);
       return dfd.promise();
@@ -295,7 +299,7 @@
 
     addAnalytics: function (namespaces) {
       // console.log('[realtime] addAnalytics', namespaces);
-      namespaces = !namespaces || $.isArray(namespaces) ? namespaces : [ namespaces ];
+      namespaces = !namespaces || Array.isArray(namespaces) ? namespaces : [ namespaces ];
 
       var self = this,
           dfd = $.Deferred();
@@ -313,10 +317,13 @@
           });
           break;
         default:
-          $.each(namespaces || [], function (index, namespace) {
-            if ($.inArray(namespace, self.analytics) === -1)
-              self.analytics.push(namespace);
-          });
+          if (namespaces.length) {
+            namespaces.forEach((namespace, index) => {
+              if (!this.analytics.includes(namespace)) {
+                this.analytics.push(namespace);
+              }
+            }
+          };
           dfd.resolve(this.analytics);
 
       }
@@ -491,19 +498,21 @@
 
       this.pullXHR = this.fetchPullEvents();
       return this.pullXHR
-        .done(function (data) {
+        .done((data) => {
           data = data.success || data;
           data = data.data || data;
 
-          $.each(data.data || [], function(index, eventData) {
-            if (self.handleEvent(Object.assign({}, eventData, { via: 'polling' })) && self.states['polling'] !== 'full')
-                self.trigger('missed', eventData);
-          });
+          if (data.data && data.data.length) {
+            data.data.forEach((eventData, index) => {
+              if (this.handleEvent(Object.assign({}, eventData, { via: 'polling' })) && this.states['polling'] !== 'full')
+                  this.trigger('missed', eventData);
+            })
+          }
 
-          self.lastPullTime = data.since > (self.lastPullTime || 0) ? data.since : self.lastPullTime;
+          this.lastPullTime = data.since > (this.lastPullTime || 0) ? data.since : this.lastPullTime;
         })
-        .always(function () {
-          self.pullXHR = null;
+        .always(() => {
+          this.pullXHR = null;
         });
     },
 
