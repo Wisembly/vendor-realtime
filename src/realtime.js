@@ -36,7 +36,7 @@
       if (!obj)
         continue;
 
-      for (var key in obj) {
+      for (let key in obj) {
         if (obj.hasOwnProperty(key)) {
           if (typeof obj[key] === 'object')
             out[key] = _deepExtend(out[key], obj[key]);
@@ -49,7 +49,7 @@
     return out;
   }
 
-  var WisemblyRealTime = function (options) {
+  let WisemblyRealTime = function (options) {
     this.init(options);
   };
 
@@ -98,7 +98,7 @@
       this.options = Object.assign({}, this.options, options);
 
       if (this.options.apiToken && this.offlineContext) {
-        var offlineContext = this.offlineContext;
+        let offlineContext = this.offlineContext;
         this.offlineContext = null;
         this.join(offlineContext);
       }
@@ -113,8 +113,7 @@
           return this.getPromise('push:connecting').promise();
       }
 
-      var self = this,
-          dfd = $.Deferred();
+      let dfd = $.Deferred();
 
       this.setState('push', 'connecting');
       this.storePromise('push:connecting', dfd);
@@ -122,15 +121,15 @@
       this.bindSocketEvents();
 
       if (this.options.apiToken) {
-          var offlineContext = this.offlineContext;
+          let offlineContext = this.offlineContext;
           this.offlineContext = null;
           this.join(offlineContext);
       }
 
       return dfd.promise()
-        .done(function () {
-          self.trigger('connected', Object.assign({}, { states: self.states }, options));
-          self.startActivityMonitor();
+        .done(() => {
+          this.trigger('connected', Object.assign({}, { states: this.states }, options));
+          this.startActivityMonitor();
         });
     },
 
@@ -142,8 +141,7 @@
       if (this.states['push'] === 'disconnecting')
         return this.getPromise('push:disconnecting').promise();
 
-      var self = this,
-          dfd = $.Deferred();
+      let dfd = $.Deferred();
 
       // disconnect socket
       if (this.socket && this.socket.connected) {
@@ -162,27 +160,26 @@
       this.offlineContext = null;
 
       return dfd.promise()
-        .always(function () {
-          self.setStates({ push: 'offline', polling: 'offline' });
-          self.socket = null;
-          self.rooms = [];
-          self.analytics = [];
-          self.promises = {};
-          self.events = {};
-          self.entities = {};
-          self.trigger('disconnected', Object.assign({}, { states: self.states }, options));
+        .always(() => {
+          this.setStates({ push: 'offline', polling: 'offline' });
+          this.socket = null;
+          this.rooms = [];
+          this.analytics = [];
+          this.promises = {};
+          this.events = {};
+          this.entities = {};
+          this.trigger('disconnected', Object.assign({}, { states: this.states }, options));
         });
     },
 
     ping: function () {
-      var self = this,
-          dfd = $.Deferred();
+      let dfd = $.Deferred();
 
-      this.socket.emit('_ping', { timestamp: +(new Date()) } , function (name, data) {
+      this.socket.emit('_ping', { timestamp: +(new Date()) } , (name, data) => {
         if ('_pong' !== name) {
           dfd.reject();
         } else {
-          self.trigger('_pong', data);
+          this.trigger('_pong', data);
           dfd.resolve(data);
         }
       });
@@ -194,26 +191,25 @@
      */
     joinFromPush: function (params) {
       // console.log('[realtime] joinFromPush', params);
-      var self = this,
-          dfd = $.Deferred();
+      let dfd = $.Deferred();
 
       if (!this.socket) {
         dfd.reject();
       } else {
-        this.socket.emit('join', Object.assign({}, { token: this.options.apiToken }, params), function (error, rooms, headers) {
+        this.socket.emit('join', Object.assign({}, { token: this.options.apiToken }, params), (error, rooms, headers) => {
           headers = headers || {};
           if ('date' in headers)
-            self.lastPullTime = self.lastPullTime || +(new Date(headers['date']));
+            this.lastPullTime = this.lastPullTime || +(new Date(headers['date']));
           if (error) {
             console.log('[realtime] Unable to join rooms on the Wisembly websocket server', error, params);
-            self.setState('polling', 'full');
+            this.setState('polling', 'full');
             dfd.reject(error);
           } else {
             console.log('[realtime] Successfully joined %d rooms on the Wisembly websocket server', rooms.length, rooms);
-            self.setState('polling', 'medium');
-            self.rooms = rooms;
-            self.trigger('rooms', { rooms: self.rooms });
-            dfd.resolve(self.rooms);
+            this.setState('polling', 'medium');
+            this.rooms = rooms;
+            this.trigger('rooms', { rooms: this.rooms });
+            dfd.resolve(this.rooms);
           }
         });
       }
@@ -252,8 +248,7 @@
 
     join: function (params) {
       // console.log('[realtime] join', params);
-      var self = this,
-          dfd = $.Deferred();
+      let dfd = $.Deferred();
 
       if (!this.options.apiToken) {
         this.offlineContext = Object.assign({}, this.offlineContext, params);
@@ -262,23 +257,27 @@
         case 'push:connected':
           this.joinFromPush(params)
             .done(dfd.resolve)
-            .fail(function () {
-              self.joinFromAPI(params)
+            .fail(() => {
+              this.joinFromAPI(params)
                 .done(dfd.resolve)
                 .fail(dfd.reject)
-                .always(function () {
-                  self.startPushRejoin(0);
+                .always(() => {
+                  this.startPushRejoin(0);
                 });
             });
           break;
         case 'push:connecting':
-          this.getPromise('push:connecting').done(function () {
-            self.join(params).done(dfd.resolve).fail(dfd.reject);
+          this.getPromise('push:connecting').done(() => {
+            this.join(params)
+              .done(dfd.resolve)
+              .fail(dfd.reject);
           });
           break;
         case 'polling:connecting':
         case 'polling:full':
-          this.joinFromAPI(params).done(dfd.resolve).fail(dfd.reject);
+          this.joinFromAPI(params)
+            .done(dfd.resolve)
+            .fail(dfd.reject);
           break;
         default:
           this.offlineContext = Object.assign({}, this.offlineContext, params);
@@ -301,18 +300,17 @@
       // console.log('[realtime] addAnalytics', namespaces);
       namespaces = !namespaces || Array.isArray(namespaces) ? namespaces : [ namespaces ];
 
-      var self = this,
-          dfd = $.Deferred();
+      let dfd = $.Deferred();
 
       switch (this.getState()) {
         case 'push:connected':
-          this.socket.emit('analytics:subscribe', namespaces || [], function (error, namespaces) {
+          this.socket.emit('analytics:subscribe', namespaces || [], (error, namespaces) => {
             if (error) {
               dfd.reject(error);
             } else {
               console.log('[realtime] Successfully joined %d analytics rooms on the Wisembly websocket server', namespaces.length);
-              self.analytics = namespaces;
-              dfd.resolve(self.analytics);
+              this.analytics = namespaces;
+              dfd.resolve(this.analytics);
             }
           });
           break;
@@ -366,10 +364,10 @@
     startActivityMonitor: function () {
       if (!this.options.inactivityTimeout)
         return;
-      var self = this;
+
       clearTimeout(this.inactivityTimer);
-      this.inactivityTimer = setTimeout(function () {
-        self.trigger('inactivity', { timeout: self.options.inactivityTimeout });
+      this.inactivityTimer = setTimeout(() => {
+        this.trigger('inactivity', { timeout: this.options.inactivityTimeout });
       }, this.options.inactivityTimeout);
     },
 
@@ -383,7 +381,7 @@
      */
 
     addEntity: function (eventData) {
-      var entity = eventData.data || {},
+      let entity = eventData.data || {},
           entityClassName = entity.class_name,
           entityId = entity.id || entity.hash,
           identifier = entityClassName && entityId ? entityClassName + ':' + entityId : null,
@@ -395,7 +393,7 @@
     },
 
     checkEntity: function(eventData) {
-      var entity = eventData.data || {},
+      let entity = eventData.data || {},
           entityClassName = entity.class_name,
           entityId = entity.id || entity.hash,
           identifier = entityClassName && entityId ? entityClassName + ':' + entityId : null,
@@ -414,27 +412,26 @@
       if (this.states['push'] !== 'connected')
         return;
       // console.log('[realtime] startPushRejoin', this.states['push']);
-      var self = this;
-          nbAttemps = 0;
+      let nbAttemps = 0;
       function fnRejoinRequest(intervall) {
-        var promise = self.rooms.length ? self.joinFromPush({ rooms: self.rooms }) : $.Deferred().resolve().promise();
+        let promise = this.rooms.length ? this.joinFromPush({ rooms: this.rooms }) : $.Deferred().resolve().promise();
         promise
-          .done(function () {
-            self.addAnalytics(self.analytics);
+          .done(() => {
+            this.addAnalytics(this.analytics);
           })
-          .fail(function () {
-            if (++nbAttemps < self.options.reconnectionAttempts)
-              fnRejoinIntervall(intervall + self.options.reconnectionDelay);
+          .fail(() => {
+            if (++nbAttemps < this.options.reconnectionAttempts)
+              fnRejoinIntervall(intervall + this.options.reconnectionDelay);
           });
         return promise;
       }
 
       function fnRejoinIntervall(intervall) {
-        if (self.states['push'] !== 'connected')
+        if (this.states['push'] !== 'connected')
           return;
-        intervall = Math.min(intervall || 0, self.options.reconnectionDelayMax);
-        clearTimeout(self.pushRejoinTimer);
-        self.pushRejoinTimer = setTimeout(function () {
+        intervall = Math.min(intervall || 0, this.options.reconnectionDelayMax);
+        clearTimeout(this.pushRejoinTimer);
+        this.pushRejoinTimer = setTimeout(() => {
           fnRejoinRequest(intervall);
         }, intervall);
       }
@@ -462,20 +459,19 @@
       if (this.states['polling'] === 'offline')
         return;
       // console.log('[realtime] startPolling', this.states['polling']);
-      var self = this;
 
       function fnPullRequest() {
-        return self.pull().always(fnPullIntervall);
+        return this.pull().always(fnPullIntervall);
       }
 
       function fnPullIntervall() {
-        clearTimeout(self.pullTimer);
-        switch (self.states['polling']) {
+        clearTimeout(this.pullTimer);
+        switch (this.states['polling']) {
           case 'full':
-            self.pullTimer = setTimeout(fnPullRequest, self.options.pullInterval);
+            this.pullTimer = setTimeout(fnPullRequest, this.options.pullInterval);
             break;
           case 'medium':
-            self.pullTimer = setTimeout(fnPullRequest, self.options.pullIntervalEnhance);
+            this.pullTimer = setTimeout(fnPullRequest, this.options.pullIntervalEnhance);
             break;
         }
       }
@@ -493,8 +489,6 @@
     pull: function() {
       if (this.pullXHR)
         return this.pullXHR;
-
-      var self = this;
 
       this.pullXHR = this.fetchPullEvents();
       return this.pullXHR
@@ -521,51 +515,49 @@
      */
 
     bindSocketEvents: function() {
-      var self = this;
-
-      this.socket.on('broadcast', function () {
-        self.onSocketBroadcast.apply(self, arguments);
+      this.socket.on('broadcast', () => {
+        this.onSocketBroadcast.apply(this, arguments);
       });
 
-      this.socket.on('uuid', function (data) {
+      this.socket.on('uuid', () => {
         console.log('[realtime] Your unique connection ID is: ' + data.uuid);
-        self.onSocketUuid.apply(self, arguments);
+        this.onSocketUuid.apply(this, arguments);
       });
 
-      this.socket.on('connect', function () {
+      this.socket.on('connect', () => {
         console.log('[realtime] Welcome to the Wisembly websocket server');
-        self.onSocketConnect.apply(self, arguments);
+        this.onSocketConnect.apply(this, arguments);
       });
 
-      this.socket.on('connect_error', function () {
+      this.socket.on('connect_error', () => {
         console.log('[realtime] Cannot connect to websocket server');
-        self.onSocketConnectError.apply(self, arguments);
+        this.onSocketConnectError.apply(this, arguments);
       });
 
-      this.socket.on('disconnect', function () {
+      this.socket.on('disconnect', () => {
         console.log('[realtime] Disconnected from the Wisembly websocket server');
-        self.onSocketDisconnect.apply(self, arguments);
+        this.onSocketDisconnect.apply(this, arguments);
       });
 
-      this.socket.on('reconnecting', function () {
+      this.socket.on('reconnecting', () => {
         console.log('[realtime] Reconnecting to the Wisembly websocket server');
-        self.onSocketReconnecting.apply(self, arguments);
+        this.onSocketReconnecting.apply(this, arguments);
       });
 
-      this.socket.on('reconnect', function () {
+      this.socket.on('reconnect', () => {
         console.log('[realtime] Reconnected to the Wisembly websocket server');
-        self.onSocketReconnect.apply(self, arguments);
+        this.onSocketReconnect.apply(this, arguments);
       });
 
-      this.socket.on('analytics', function (data) {
+      this.socket.on('analytics', (data) => {
         data = data || {};
         // console.log('[realtime] Analytics', data.room, data.usersCount);
-        self.onSocketAnalytics.apply(self, arguments);
+        this.onSocketAnalytics.apply(this, arguments);
       });
     },
 
     onSocketBroadcast: function (data) {
-      var data = JSON.parse(data);
+      let data = JSON.parse(data);
       this.handleEvent(Object.assign({}, data, { via: 'socket' }));
     },
 
@@ -585,11 +577,10 @@
     },
 
     onSocketDisconnect: function (error) {
-      var self = this;
       this.trigger('pushDown');
       this.resolvePromise('push:disconnecting')
-        .fail(function () {
-          self.setStates({ push: 'offline', polling: 'full' });
+        .fail(() => {
+          this.setStates({ push: 'offline', polling: 'full' });
         });
     },
 
@@ -612,7 +603,7 @@
     buildURL: function (path) {
       if (!this.options.apiHost || !this.options.apiNamespace)
         return null;
-      var url = this.options.apiHost.toString() + '/' + this.options.apiNamespace.toString() + '/' + path;
+      let url = this.options.apiHost.toString() + '/' + this.options.apiNamespace.toString() + '/' + path;
       return url.replace(/([^:]\/)\//g, function ($0, $1) { return $1; });
     },
 
@@ -719,12 +710,13 @@
     },
 
     resolvePromise: function (name) {
-      var self = this,
-          dfd = this.getPromise(name);
+      let dfd = this.getPromise(name);
+
       if (dfd.state() === 'pending')
         dfd.resolve();
-      return dfd.promise().always(function () {
-        delete self.promises[name];
+
+      return dfd.promise().always(() => {
+        delete this.promises[name];
       });
     },
 
@@ -736,17 +728,17 @@
       if (states['push'] === this.states['push'] && states['polling'] === this.states['polling'])
         return;
       // store previous states
-      var previousStates = this.states;
+      let previousStates = this.states;
       // update states
       this.states = states;
 
       // retrieve current state
-      var state = this.getState();
+      let state = this.getState();
 
       // on current state changed
       if (this.state !== state) {
         // store previous state
-        var previousState = this.state;
+        let previousState = this.state;
         // store current state
         this.state = state;
         // console.log('[realtime] setStates:', states, state);
@@ -767,7 +759,7 @@
 
     setState: function (mode, state) {
       // console.log('[realtime] setState', mode, state);
-      var states = {
+      let states = {
         push: this.states['push'],
         polling: this.states['polling']
       };
@@ -812,7 +804,7 @@
       if (!this.__bindings.hasOwnProperty(name))
         return;
 
-      for (var filteredListeners = [], t = 0, T = this.__bindings[name].length; t < T; ++ t)
+      for (let filteredListeners = [], t = 0, T = this.__bindings[name].length; t < T; ++ t)
         if (this.__bindings[name][t].handler !== handler || this.__bindings[name][t].context !== context)
           filteredListeners.push(this.__bindings[name][t]);
 
@@ -829,18 +821,18 @@
 
       // Avoid Array.prototype.slice.call(arguments) to keep the function optimized
       // Also: we start at 1 instead of 0 so that we avoid copying the "name" argument
-      for (var args = [], t = 1, T = arguments.length; t < T; ++ t)
+      for (let args = [], t = 1, T = arguments.length; t < T; ++ t)
         args.push(arguments[t]);
 
-      var listeners = this.__bindings[name];
+      let listeners = this.__bindings[name];
 
       // Remove every "once" listener before actually running them so they will always be called for THIS event only
-      for (var t = 0, T = listeners.length; t < T; ++ t)
+      for (let t = 0, T = listeners.length; t < T; ++ t)
         if (listeners[t].once)
           this.off(name, listeners[t].handler, listeners[t].context);
 
       // Finally dispatch the events to the listeners
-      for (var t = 0, T = listeners.length; t < T; ++ t) {
+      for (let t = 0, T = listeners.length; t < T; ++ t) {
         listeners[t].handler.apply(listeners[t].context, args);
       }
     }
