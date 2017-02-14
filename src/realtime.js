@@ -4,18 +4,18 @@
 
   if (typeof define !== 'undefined' && define.amd) {
 
-    define(['jquery', 'socket.io-client'], factory);
+    define(['jquery', 'socket.io-client', 'promise-defer'], factory);
 
   } else if (typeof module !== 'undefined') {
 
-    module.exports = factory(require('jquery'), require('socket.io-client'));
+    module.exports = factory(require('jquery'), require('socket.io-client'), require('promise-defer'));
 
   } else if (typeof window !== 'undefined') {
 
     if (typeof window.$ !== 'undefined' && typeof window.io !== 'undefined') {
       window.WisemblyRealTime = factory(window.$, window.io);
     } else if (typeof require !== 'undefined') {
-      window.WisemblyRealTime = factory(require('jquery'), require('socket.io-client'));
+      window.WisemblyRealTime = factory(require('jquery'), require('socket.io-client'), require('promise-defer'));
     }
 
   } else {
@@ -24,7 +24,7 @@
 
   }
 
-})(function ($, io) {
+})(function ($, io, defer) {
 
   // http://youmightnotneedjquery.com/
   let _deepExtend = (out) => {
@@ -108,12 +108,12 @@
       // console.log('[realtime]', 'connect', this.options);
       switch (this.states['push']) {
         case 'connected':
-          return $.Deferred().resolve().promise();
+          return Promise.resolve();
         case 'connecting':
           return this.getPromise('push:connecting').promise();
       }
 
-      let dfd = $.Deferred();
+      let dfd = defer();
 
       this.setState('push', 'connecting');
       this.storePromise('push:connecting', dfd);
@@ -126,8 +126,8 @@
           this.join(offlineContext);
       }
 
-      return dfd.promise()
-        .done(() => {
+      return dfd.promise
+        .then(() => {
           this.trigger('connected', Object.assign({}, { states: this.states }, options));
           this.startActivityMonitor();
         });
@@ -136,12 +136,12 @@
     disconnect: function (options) {
       // console.log('[realtime] disconnect');
       if (this.getState() === 'offline')
-        return $.Deferred().resolve().promise();
+        return Promise.resolve();
 
       if (this.states['push'] === 'disconnecting')
-        return this.getPromise('push:disconnecting').promise();
+        return this.getPromise('push:disconnecting').promise;
 
-      let dfd = $.Deferred();
+      let dfd = defer();
 
       // disconnect socket
       if (this.socket && this.socket.connected) {
@@ -149,7 +149,7 @@
         this.storePromise('push:disconnecting', dfd);
         this.socket.disconnect();
       } else {
-        dfd.resolve();
+        dfd.promise.resolve();
       }
 
       this.stopPushRejoin();
@@ -159,8 +159,8 @@
 
       this.offlineContext = null;
 
-      return dfd.promise()
-        .always(() => {
+      return dfd.promise
+        .then(() => {
           this.setStates({ push: 'offline', polling: 'offline' });
           this.socket = null;
           this.rooms = [];
@@ -173,17 +173,17 @@
     },
 
     ping: function () {
-      let dfd = $.Deferred();
+      let dfd = defer();
 
       this.socket.emit('_ping', { timestamp: +(new Date()) } , (name, data) => {
         if ('_pong' !== name) {
-          dfd.reject();
+          dfd.promise.reject();
         } else {
           this.trigger('_pong', data);
-          dfd.resolve(data);
+          dfd.promise.resolve(data);
         }
       });
-      return dfd.promise();
+      return dfd.promise;
     },
 
     /*
@@ -191,10 +191,10 @@
      */
     joinFromPush: function (params) {
       // console.log('[realtime] joinFromPush', params);
-      let dfd = $.Deferred();
+      let dfd = defer();
 
       if (!this.socket) {
-        dfd.reject();
+        dfd.promise.reject();
       } else {
         this.socket.emit('join', Object.assign({}, { token: this.options.apiToken }, params), (error, rooms, headers) => {
           headers = headers || {};
@@ -203,26 +203,26 @@
           if (error) {
             console.log('[realtime] Unable to join rooms on the Wisembly websocket server', error, params);
             this.setState('polling', 'full');
-            dfd.reject(error);
+            dfd.promise.reject(error);
           } else {
             console.log('[realtime] Successfully joined %d rooms on the Wisembly websocket server', rooms.length, rooms);
             this.setState('polling', 'medium');
             this.rooms = rooms;
             this.trigger('rooms', { rooms: this.rooms });
-            dfd.resolve(this.rooms);
+            dfd.promise.resolve(this.rooms);
           }
         });
       }
-      return dfd.promise();
+      return dfd.promise;
     },
 
     joinFromAPI: function (params) {
       // console.log('[realtime] joinFromAPI', params);
-      let dfd = $.Deferred();
+      let dfd = defer();
       let rooms = this.rooms;
 
       this.fetchRooms({ data: JSON.stringify(params) })
-        .done((data, status, jqXHR) => {
+        .then((data, status, jqXHR) => {
           data = data.success || data;
           data = data.data || data;
 
@@ -240,15 +240,15 @@
 
           console.log('[realtime] Successfully retrieved %d rooms from Wisembly API', rooms.length, rooms);
           this.trigger('rooms', { rooms: rooms });
-          dfd.resolve(rooms);
+          dfd.promise.resolve(rooms);
         })
-        .fail(dfd.reject);
-      return dfd.promise();
+        .catch(dfd.promise.reject);
+      return dfd.promise;
     },
 
     join: function (params) {
       // console.log('[realtime] join', params);
-      let dfd = $.Deferred();
+      let dfd = defer();
 
       if (!this.options.apiToken) {
         this.offlineContext = Object.assign({}, this.offlineContext, params);
@@ -256,40 +256,40 @@
       } else switch (this.getState()) {
         case 'push:connected':
           this.joinFromPush(params)
-            .done(dfd.resolve)
-            .fail(() => {
+            .then(dfd.promise.resolve)
+            .catch(() => {
               this.joinFromAPI(params)
-                .done(dfd.resolve)
-                .fail(dfd.reject)
-                .always(() => {
+                .then(dfd.promise.resolve)
+                .catch(dfd.promise.reject)
+                .then(() => {
                   this.startPushRejoin(0);
                 });
             });
           break;
         case 'push:connecting':
-          this.getPromise('push:connecting').done(() => {
+          this.getPromise('push:connecting').then(() => {
             this.join(params)
-              .done(dfd.resolve)
-              .fail(dfd.reject);
+              .then(dfd.promise.resolve)
+              .catch(dfd.promise.reject);
           });
           break;
         case 'polling:connecting':
         case 'polling:full':
           this.joinFromAPI(params)
-            .done(dfd.resolve)
-            .fail(dfd.reject);
+            .then(dfd.promise.resolve)
+            .catch(dfd.promise.reject);
           break;
         default:
           this.offlineContext = Object.assign({}, this.offlineContext, params);
-          dfd.reject();
+          dfd.promise.reject();
       }
 
-      return dfd.promise();
+      return dfd.promise;
     },
 
     leave: function (rooms) {
       // TODO
-      return $.Deferred().reject().promise();
+      return dfd.promise.reject();
     },
 
     /*
@@ -300,17 +300,17 @@
       // console.log('[realtime] addAnalytics', namespaces);
       namespaces = !namespaces || Array.isArray(namespaces) ? namespaces : [ namespaces ];
 
-      let dfd = $.Deferred();
+      let dfd = defer();
 
       switch (this.getState()) {
         case 'push:connected':
           this.socket.emit('analytics:subscribe', namespaces || [], (error, namespaces) => {
             if (error) {
-              dfd.reject(error);
+              dfd.promise.reject(error);
             } else {
               console.log('[realtime] Successfully joined %d analytics rooms on the Wisembly websocket server', namespaces.length);
               this.analytics = namespaces;
-              dfd.resolve(this.analytics);
+              dfd.promise.resolve(this.analytics);
             }
           });
           break;
@@ -320,17 +320,18 @@
               if (!this.analytics.includes(namespace)) {
                 this.analytics.push(namespace);
               }
-            }
-          };
-          dfd.resolve(this.analytics);
+            });
+          }
+
+          dfd.promise.resolve(this.analytics);
 
       }
-      return dfd.promise();
+      return dfd.promise;
     },
 
     removeAnalytics: function (namespaces) {
       // TODO
-      return $.Deferred().reject().promise();
+      return dfd.promise.reject();
     },
 
     /*
@@ -414,12 +415,12 @@
       // console.log('[realtime] startPushRejoin', this.states['push']);
       let nbAttemps = 0;
       function fnRejoinRequest(intervall) {
-        let promise = this.rooms.length ? this.joinFromPush({ rooms: this.rooms }) : $.Deferred().resolve().promise();
+        let promise = this.rooms.length ? this.joinFromPush({ rooms: this.rooms }) : Promise.resolve();
         promise
-          .done(() => {
+          .then(() => {
             this.addAnalytics(this.analytics);
           })
-          .fail(() => {
+          .catch(() => {
             if (++nbAttemps < this.options.reconnectionAttempts)
               fnRejoinIntervall(intervall + this.options.reconnectionDelay);
           });
@@ -461,7 +462,7 @@
       // console.log('[realtime] startPolling', this.states['polling']);
 
       function fnPullRequest() {
-        return this.pull().always(fnPullIntervall);
+        return this.pull().then(fnPullIntervall);
       }
 
       function fnPullIntervall() {
@@ -492,7 +493,7 @@
 
       this.pullXHR = this.fetchPullEvents();
       return this.pullXHR
-        .done((data) => {
+        .then((data) => {
           data = data.success || data;
           data = data.data || data;
 
@@ -505,7 +506,7 @@
 
           this.lastPullTime = data.since > (this.lastPullTime || 0) ? data.since : this.lastPullTime;
         })
-        .always(() => {
+        .then(() => {
           this.pullXHR = null;
         });
     },
@@ -557,8 +558,8 @@
     },
 
     onSocketBroadcast: function (data) {
-      let data = JSON.parse(data);
-      this.handleEvent(Object.assign({}, data, { via: 'socket' }));
+      let _data = JSON.parse(data);
+      this.handleEvent(Object.assign({}, _data, { via: 'socket' }));
     },
 
     onSocketConnect: function () {
@@ -579,7 +580,7 @@
     onSocketDisconnect: function (error) {
       this.trigger('pushDown');
       this.resolvePromise('push:disconnecting')
-        .fail(() => {
+        .catch(() => {
           this.setStates({ push: 'offline', polling: 'full' });
         });
     },
@@ -677,7 +678,7 @@
         } else {
           request.send(options.data);
         }
-      };
+      });
     },
 
     fetchRooms: function (options) {
@@ -713,9 +714,9 @@
       let dfd = this.getPromise(name);
 
       if (dfd.state() === 'pending')
-        dfd.resolve();
+        dfd.promise.resolve();
 
-      return dfd.promise().always(() => {
+      return dfd.promise.then(() => {
         delete this.promises[name];
       });
     },

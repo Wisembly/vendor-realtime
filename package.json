@@ -1,31 +1,36 @@
 {
-    "name": "wisembly-vendor-realtime",
-    "description": "Realtime javascript client used between Wisembly and Solid",
-    "repository": {
-        "type": "git",
-        "url": "git://github.com/Wisembly/vendor-realtime.git"
-    },
-    "license": "MIT",
-    "main": "src/realtime.js",
-    "version": "0.3.1",
-    "scripts": {
-        "test": "$(npm bin)/bower install && $(npm bin)/karma start test/karma.config.js",
-        "build": "$(npm bin)/gulp"
-    },
-    "dependencies": {
-        "jquery": ">=1.6",
-        "socket.io-client": "1.7.2"
-    },
-    "devDependencies": {
-        "bower": "*",
-        "karma": "*",
-        "karma-mocha": "*",
-        "karma-sinon-expect": "*",
-        "karma-phantomjs-launcher": "*",
-        "gulp": "*",
-        "gulp-uglify": "*",
-        "gulp-rename": "*",
-        "mocha": "*",
-        "phantomjs-prebuilt": "*"
-    }
+  "name": "wisembly-vendor-realtime",
+  "description": "Realtime javascript client used between Wisembly and Solid",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/Wisembly/vendor-realtime.git"
+  },
+  "license": "MIT",
+  "main": "src/realtime.js",
+  "version": "0.3.1",
+  "scripts": {
+    "test": "$(npm bin)/bower install && $(npm bin)/karma start test/karma.config.js",
+    "build": "$(npm bin)/gulp"
+  },
+  "dependencies": {
+    "babel-plugin-es6-promise": "^1.1.1",
+    "jquery": ">=1.6",
+    "promise-defer": "^1.0.0",
+    "socket.io-client": "1.7.2"
+  },
+  "devDependencies": {
+    "babel-preset-es2015": "^6.22.0",
+    "babel-preset-stage-0": "^6.22.0",
+    "bower": "*",
+    "gulp": "*",
+    "gulp-babel": "^6.1.2",
+    "gulp-rename": "*",
+    "gulp-uglify": "*",
+    "karma": "*",
+    "karma-mocha": "*",
+    "karma-phantomjs-launcher": "*",
+    "karma-sinon-expect": "*",
+    "mocha": "*",
+    "phantomjs-prebuilt": "*"
+  }
 }
