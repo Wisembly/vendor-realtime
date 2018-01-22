@@ -81,6 +81,10 @@
       }
     },
 
+    setOption: function (key, value) {
+      this.options[key] = value;
+    },
+
     connect: function (options) {
       // console.log('[realtime]', 'connect', this.options);
       switch (this.states['push']) {
