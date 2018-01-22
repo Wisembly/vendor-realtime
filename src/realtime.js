@@ -587,6 +587,7 @@
     apiRequest: function (path, options) {
       var self = this,
           token = this.options.apiToken,
+          password = this.options.password,
           url = this.buildURL(path);
       if (!url || !token)
         return $.Deferred().reject().promise();
@@ -596,7 +597,8 @@
           dataType: 'json',
           contentType: 'application/json',
           headers: {
-            'Wisembly-Token': token
+            'Wisembly-Token': token,
+            'Wisembly-Password': password
           },
           cache: false
       }, options);
