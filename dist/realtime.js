@@ -719,6 +719,16 @@
      */
 
     on: function (name, handler, context, once) {
+      if(name.startsWith('socket:')){
+        var eventName = name.split('socket:')[1]
+        this.socket.on(eventName, function(data){
+          typeof handler === 'function' && handler(data);
+          if(once){
+            this.socket.off(eventName)
+          }
+        })
+        return;
+      }
       if (context === null)
         context = undefined;
 
