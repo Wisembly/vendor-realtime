@@ -13,3 +13,5 @@ gulp.task('scripts', function () {
         .pipe(uglify())
         .pipe(gulp.dest('dist'));
 });
+
+gulp.task('build', () => gulp.start('scripts'))

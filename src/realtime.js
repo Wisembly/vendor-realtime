@@ -323,7 +323,7 @@
     },
 
     handleEvent: function (eventData) {
-      if (!this.checkEvent(eventData) || !this.checkEntity(eventData))
+      if (!(this.checkEvent(eventData) || !eventData.data) || !this.checkEntity(eventData))
         return false;
       this.addEvent(eventData);
       this.addEntity(eventData);
@@ -537,7 +537,10 @@
     },
 
     onSocketBroadcast: function (data) {
-      var data = JSON.parse(data);
+      if(typeof data === 'string'){
+        data = JSON.parse(data);
+      }
+      
       this.handleEvent($.extend({}, data, { via: 'socket' }));
     },
 
