@@ -504,6 +504,11 @@
         self.onSocketUuid.apply(self, arguments);
       });
 
+      this.socket.on('cluster', function (data) {
+        console.log('[realtime] Your cluster node is: ' + data.node);
+        self.onSocketCluster.apply(self, arguments);
+      });
+
       this.socket.on('connect', function () {
         console.log('[realtime] Welcome to the Wisembly websocket server');
         self.onSocketConnect.apply(self, arguments);
@@ -540,7 +545,7 @@
       if(typeof data === 'string'){
         data = JSON.parse(data);
       }
-      
+
       this.handleEvent($.extend({}, data, { via: 'socket' }));
     },
 
@@ -552,6 +557,10 @@
 
     onSocketUuid: function (data) {
       this.uuid = data.uuid;
+    },
+
+    onSocketCluster: function (data) {
+      this.cluster = data.cluster;
     },
 
     onSocketConnectError: function (error) {
