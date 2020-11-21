@@ -36,6 +36,8 @@
     init: function (options) {
       this.mode = null;
 
+      this.io = io;
+
       this.state = 'offline';
       this.states = {
         push: 'offline',
@@ -185,6 +187,8 @@
           headers = headers || {};
           if ('date' in headers)
             self.lastPullTime = self.lastPullTime || +(new Date(headers['date']));
+          if ('function' === typeof self.options.onJoin)
+            self.options.onJoin(error, rooms, headers);
           if (error) {
             console.log('[realtime] Unable to join rooms on the Wisembly websocket server', error, params);
             self.setState('polling', 'full');
